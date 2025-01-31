@@ -527,12 +527,12 @@ def main():
         elevations = torch.tensor([-elevation] * 4).deg2rad().float()
         azimuths = torch.tensor([0., 90., 180., 270.]).deg2rad().float()  # hard-coded
         radius = torch.tensor([args.distance] * 4).float()
-        input_C2W = op_util.orbit_camera_batch(elevations, azimuths, radius, is_degree=False)  # (V_in, 4, 4)
+        input_C2W = geo_util.orbit_camera(elevations, azimuths, radius, is_degree=False)  # (V_in, 4, 4)
         input_C2W[:, :3, 1:3] *= -1  # OpenGL -> OpenCV
         input_fxfycxcy = fxfycxcy.unsqueeze(0).repeat(input_C2W.shape[0], 1)  # (V_in, 4)
         if opt.input_concat_plucker:
             H = W = opt.input_res
-            plucker, _ = op_util.plucker_ray(H, W, input_C2W.unsqueeze(0), input_fxfycxcy.unsqueeze(0))
+            plucker, _ = geo_util.plucker_ray(H, W, input_C2W.unsqueeze(0), input_fxfycxcy.unsqueeze(0))
             plucker = plucker.squeeze(0)  # (V_in, 6, H, W)
             if opt.view_concat_condition:
                 plucker = torch.cat([plucker[0:1, ...], plucker], dim=0)  # (V_in+1, 6, H, W)
