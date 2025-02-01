@@ -193,6 +193,11 @@ def main():
         help="The elevation of rendering"
     )
     parser.add_argument(
+        "--use_elevest",
+        action="store_true",
+        help="Whether or not to use an elevation estimation model"
+    )
+    parser.add_argument(
         "--distance",
         type=float,
         default=1.4,
@@ -407,7 +412,6 @@ def main():
 
     gsvae = GSAutoencoderKL(opt)
     gsrecon = GSRecon(opt)
-    elevest = ElevEst(opt)
 
     if args.scheduler_type == "ddim":
         noise_scheduler = DDIMScheduler.from_pretrained(opt.pretrained_model_name_or_path, subfolder="scheduler")
@@ -464,13 +468,11 @@ def main():
     vae.requires_grad_(False)
     gsvae.requires_grad_(False)
     gsrecon.requires_grad_(False)
-    elevest.requires_grad_(False)
     unet.requires_grad_(False)
     text_encoder.eval()
     vae.eval()
     gsvae.eval()
     gsrecon.eval()
-    elevest.eval()
     unet.eval()
     if controlnet is not None:
         controlnet.requires_grad_(False)
@@ -491,19 +493,11 @@ def main():
         None if args.hdfs_dir is None else os.path.join(args.project_hdfs_dir, args.load_pretrained_gsrecon),
         gsrecon,
     )
-    logger.info(f"Load ElevEst checkpoint from [{args.load_pretrained_elevest}] iteration [{args.load_pretrained_elevest_ckpt:06d}]\n")
-    elevest = util.load_ckpt(
-        os.path.join(args.output_dir, args.load_pretrained_elevest, "checkpoints"),
-        args.load_pretrained_elevest_ckpt,
-        None if args.hdfs_dir is None else os.path.join(args.project_hdfs_dir, args.load_pretrained_elevest),
-        elevest,
-    )
 
     text_encoder = text_encoder.to(f"cuda:{args.gpu_id}")
     vae = vae.to(f"cuda:{args.gpu_id}")
     gsvae = gsvae.to(f"cuda:{args.gpu_id}")
     gsrecon = gsrecon.to(f"cuda:{args.gpu_id}")
-    elevest = elevest.to(f"cuda:{args.gpu_id}")
     unet = unet.to(f"cuda:{args.gpu_id}")
     if controlnet is not None:
         controlnet = controlnet.to(f"cuda:{args.gpu_id}")
@@ -532,6 +526,21 @@ def main():
     # Set rendering resolution
     if args.render_res is None:
         args.render_res = opt.input_res
+
+    # Load elevation estimation model
+    if args.use_elevest:
+        elevest = ElevEst(opt)
+        elevest.requires_grad_(False)
+        elevest.eval()
+
+        logger.info(f"Load ElevEst checkpoint from [{args.load_pretrained_elevest}] iteration [{args.load_pretrained_elevest_ckpt:06d}]\n")
+        elevest = util.load_ckpt(
+            os.path.join(args.output_dir, args.load_pretrained_elevest, "checkpoints"),
+            args.load_pretrained_elevest_ckpt,
+            None if args.hdfs_dir is None else os.path.join(args.project_hdfs_dir, args.load_pretrained_elevest),
+            elevest,
+        )
+        elevest = elevest.to(f"cuda:{args.gpu_id}")
 
     # Save all experimental parameters of this run to a file (args and configs)
     _ = util.save_experiment_params(args, configs, opt, infer_dir)
@@ -566,6 +575,7 @@ def main():
         # Elevation estimation
         if image is not None:
             if args.elevation is None:
+                assert args.use_elevest, "Elevation estimation is required for image-conditioned generation if `args.elevation` is not provided"
                 with torch.no_grad():
                     elevation = -elevest.predict_elev(image).cpu().rad2deg().item()
                 logger.info(f"Elevation estimation: [{elevation}] deg\n")
@@ -574,9 +584,9 @@ def main():
 
         # Get plucker embeddings
         fxfycxcy = torch.tensor([opt.fxfy, opt.fxfy, 0.5, 0.5], device=f"cuda:{args.gpu_id}").float()
-        elevations = torch.tensor([-elevation] * 4).deg2rad().float()
-        azimuths = torch.tensor([0., 90., 180., 270.]).deg2rad().float()  # hard-coded
-        radius = torch.tensor([args.distance] * 4).float()
+        elevations = torch.tensor([-elevation] * 4, device=f"cuda:{args.gpu_id}").deg2rad().float()
+        azimuths = torch.tensor([0., 90., 180., 270.], device=f"cuda:{args.gpu_id}").deg2rad().float()  # hard-coded
+        radius = torch.tensor([args.distance] * 4, device=f"cuda:{args.gpu_id}").float()
         input_C2W = geo_util.orbit_camera(elevations, azimuths, radius, is_degree=False)  # (V_in, 4, 4)
         input_C2W[:, :3, 1:3] *= -1  # OpenGL -> OpenCV
         input_fxfycxcy = fxfycxcy.unsqueeze(0).repeat(input_C2W.shape[0], 1)  # (V_in, 4)
@@ -644,7 +654,7 @@ def main():
                         C2W = []
                         for i in range(len(render_azimuths)):
                             c2w = torch.from_numpy(
-                                orbit_camera(-args.elevation, render_azimuths[i], radius=args.distance, opengl=True)
+                                orbit_camera(-elevation, render_azimuths[i], radius=args.distance, opengl=True)
                             ).to(f"cuda:{args.gpu_id}")
                             c2w[:3, 1:3] *= -1  # OpenGL -> OpenCV
                             C2W.append(c2w)

@@ -26,11 +26,8 @@ def load_ckpt(
             ckpt_iter = int(sorted(os.listdir(ckpt_dir))[-1])
 
     # Download checkpoint
-    if use_ema:
-        ckpt_path = f"{ckpt_dir}/{ckpt_iter:06d}/ema_states.pth"
-    else:
-        ckpt_path = f"{ckpt_dir}/{ckpt_iter:06d}/model.safetensors"
-    if not os.path.exists(ckpt_path) and not os.path.exists(f"{ckpt_dir}/{ckpt_iter:06d}/pytorch_model"):
+    ckpt_path = f"{ckpt_dir}/{ckpt_iter:06d}"
+    if not os.path.exists(ckpt_path):
         assert hdfs_dir is not None
         if accelerator is not None:
             if accelerator.is_main_process:

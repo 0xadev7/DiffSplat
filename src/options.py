@@ -241,7 +241,7 @@ opt_dict["gsvae_sd35m"] = _update_opt(
     ## SD15-based
 opt_dict["gsdiff_sd15"] = Options(
     prompt_embed_dir="/tmp/GObjaverse_sd15_prompt_embeds",
-    pretrained_model_name_or_path="chenguolin/stable-diffusion-v1-5",
+    pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5",
 )
     ## SDXL-based
 opt_dict["gsdiff_sdxl"] = Options(
