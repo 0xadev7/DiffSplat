@@ -15,7 +15,7 @@ def download_ckpt():
         "--model_type",
         type=str,
         default="sd15",
-        choices=["sd15", "pas", "sd35m", "depth", "normal", "canny"],
+        choices=["sd15", "pas", "sd35m", "depth", "normal", "canny", "elevest"],
         help="Model type to download"
     )
     parser.add_argument(
@@ -43,8 +43,8 @@ def download_ckpt():
                 f"gsdiff_gobj83k_sd15{suffix}__render/*",  # `DiffSplat (SD)`
             ]
         )
+    # DiffSplat (PixArt-Sigma)
     elif model_type == "pas":
-        # DiffSplat (PixArt-Sigma)
         snapshot_download(
             repo_id=repo_id,
             local_dir=local_dir,
@@ -54,8 +54,8 @@ def download_ckpt():
                 f"gsdiff_gobj83k_pas_fp16{suffix}__render/*",  # `DiffSplat (PixArt-Sigma)`
             ]
         )
+    # DiffSplat (SD3.5m)
     elif model_type == "sd35m":
-        # DiffSplat (SD3.5m)
         snapshot_download(
             repo_id=repo_id,
             local_dir=local_dir,
@@ -65,8 +65,8 @@ def download_ckpt():
                 f"gsdiff_gobj83k_sd35m{suffix}__render/*",  # `DiffSplat (SD3.5m)`
             ]
         )
+    # DiffSplat ControlNet (SD1.5)
     elif model_type in ["depth", "normal", "canny"]:
-        # DiffSplat ControlNet (SD1.5)
         snapshot_download(
             repo_id=repo_id,
             local_dir=local_dir,
@@ -74,5 +74,18 @@ def download_ckpt():
                 f"gsdiff_gobj83k_sd15__render__{model_type}/*",  # `DiffSplat ControlNet (SD1.5)`
             ]
         )
+    # Elevation Estimation
+    elif model_type == "elevest":
+        snapshot_download(
+            repo_id=repo_id,
+            local_dir=local_dir,
+            allow_patterns=[
+                "elevest_gobj265k_b_C25/*",
+            ]
+        )
     else:
-        raise ValueError(f"Choose from ['sd15', 'pas', 'sd35m', 'depth', 'normal', 'canny'], but got [{model_type}]")
+        raise ValueError(f"Choose from ['sd15', 'pas', 'sd35m', 'depth', 'normal', 'canny', 'elevest'], but got [{model_type}]")
+
+
+if __name__ == "__main__":
+    download_ckpt()

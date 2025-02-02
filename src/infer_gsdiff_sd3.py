@@ -340,6 +340,17 @@ def main():
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
 
+    # Set options for image-conditioned models
+    if args.image_path is not None or args.image_dir is not None:
+        opt.prediction_type = "v_prediction"
+        opt.view_concat_condition = True
+        opt.input_concat_binary_mask = True
+        if args.guidance_scale > 3.:
+            logger.info(
+                f"WARNING: guidance scale ({args.guidance_scale}) is too large for image-conditioned models. " +
+                "Please set it to a smaller value (e.g., 2.0) for better results.\n"
+            )
+
     # Load the image for reconstruction
     if args.image_dir is not None:
         logger.info(f"Load images from [{args.image_dir}]\n")
@@ -525,7 +536,7 @@ def main():
                 image, size=(opt.input_res, opt.input_res),
                 mode="bilinear", align_corners=False, antialias=True
             )
-            image = image.unsqueeze(1).to(device=f"cuda:{args.gpu_id}")
+            image = image.unsqueeze(1).to(device=f"cuda:{args.gpu_id}")  # (B=1, V_cond=1, 3, H, W)
         else:
             image_name = ""
             image = None
@@ -535,8 +546,10 @@ def main():
             if args.elevation is None:
                 assert args.use_elevest, "Elevation estimation is required for image-conditioned generation if `args.elevation` is not provided"
                 with torch.no_grad():
-                    elevation = -elevest.predict_elev(image).cpu().rad2deg().item()
+                    elevation = -elevest.predict_elev(image.squeeze(1)).cpu().item()
                 logger.info(f"Elevation estimation: [{elevation}] deg\n")
+            else:
+                elevation = args.elevation
         else:
             elevation = args.elevation if args.elevation is not None else 10.
 

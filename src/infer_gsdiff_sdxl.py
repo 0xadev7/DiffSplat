@@ -365,6 +365,17 @@ def main():
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
 
+    # Set options for image-conditioned models
+    if (args.image_path is not None or args.image_dir is not None) and args.load_pretrained_controlnet is None:
+        opt.prediction_type = "v_prediction"
+        opt.view_concat_condition = True
+        opt.input_concat_binary_mask = True
+        if args.guidance_scale > 3.:
+            logger.info(
+                f"WARNING: guidance scale ({args.guidance_scale}) is too large for image-conditioned models. " +
+                "Please set it to a smaller value (e.g., 2.0) for better results.\n"
+            )
+
     # Load the image for reconstruction
     if args.image_dir is not None:
         logger.info(f"Load images from [{args.image_dir}]\n")
@@ -463,13 +474,14 @@ def main():
         logger.info(f"Load MVUNet ControlNet checkpoint from [{args.load_pretrained_controlnet}] iteration [{args.load_pretrained_controlnet_ckpt:06d}]\n")
         path = f"out/{args.load_pretrained_controlnet}/checkpoints/{args.load_pretrained_controlnet_ckpt:06d}"
         if not os.path.exists(path):
-            util.load_ckpt(
+            args.load_pretrained_controlnet_ckpt = util.load_ckpt(
                 os.path.join(args.output_dir, args.load_pretrained_controlnet, "checkpoints"),
                 args.load_pretrained_controlnet_ckpt,
-                os.path.join(args.project_hdfs_dir, args.load_pretrained_controlnet),
+                None if args.hdfs_dir is None else os.path.join(args.project_hdfs_dir, args.load_pretrained_controlnet),
                 None,  # `None`: not load model ckpt here
             )
         controlnet = MVControlNetModel.from_unet(unet, conditioning_channels=opt.controlnet_input_channels)
+        path = f"out/{args.load_pretrained_controlnet}/checkpoints/{args.load_pretrained_controlnet_ckpt:06d}"
         ckpt_path = os.path.join(path, "controlnet", "diffusion_pytorch_model.safetensors")
         load_checkpoint_and_dispatch(controlnet, ckpt_path)
     else:
@@ -583,7 +595,9 @@ def main():
                 image, size=(opt.input_res, opt.input_res),
                 mode="bilinear", align_corners=False, antialias=True
             )
-            image = image.unsqueeze(1).to(device=f"cuda:{args.gpu_id}")
+            image = image.unsqueeze(1).to(device=f"cuda:{args.gpu_id}")  # (B=1, V_cond=1, 3, H, W)
+            if args.load_pretrained_controlnet is not None:
+                image = image.squeeze(1)  # (B=1, 3, H, W) for controlnet input
         else:
             image_name = ""
             image = None
@@ -593,8 +607,10 @@ def main():
             if args.elevation is None:
                 assert args.use_elevest, "Elevation estimation is required for image-conditioned generation if `args.elevation` is not provided"
                 with torch.no_grad():
-                    elevation = -elevest.predict_elev(image).cpu().rad2deg().item()
+                    elevation = -elevest.predict_elev(image.squeeze(1)).cpu().item()
                 logger.info(f"Elevation estimation: [{elevation}] deg\n")
+            else:
+                elevation = args.elevation
         else:
             elevation = args.elevation if args.elevation is not None else 10.
 

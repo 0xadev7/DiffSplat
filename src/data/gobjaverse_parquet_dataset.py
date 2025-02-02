@@ -111,10 +111,7 @@ class GObjaverseParquetDataset(ChunkedDataset):
                 canny = -canny + 1.  # 0->1, 1->0, i.e., white bg
                 return_dict["canny"].append(canny)  # (V, 3, H, W)
 
-            if not USE_BACKUP:
-                c2w = self._load_camera_from_json(sample[f"{vid:05d}.json"])
-            else:
-                c2w = self._load_camera_from_json(f"{uid}.{vid:05d}")
+            c2w = self._load_camera_from_json(sample[f"{vid:05d}.json"])
             # Blender world + OpenCV cam -> OpenGL world & cam; https://kit.kiui.moe/camera
             c2w[1] *= -1
             c2w[[1, 2]] = c2w[[2, 1]]

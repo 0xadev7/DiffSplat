@@ -38,15 +38,15 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 
 ## 📢 News
 
-- **2025-02-02**: Text-conditioned inference instructions are provided.
+- **2025-02-02**: Inference instructions (text-conditioned & image-conditioned & controlnet) are provided.
 - **2025-01-29**: The source code and pretrained models are released. Happy 🐍 Chinese New Year 🎆!
 - **2025-01-22**: InstructScene is accepted to ICLR 2025.
 
 
 ## 📋 TODO
 
-- [x] Provide detailed instructions for text-conditioned inference.
-- [ ] Provide detailed instructions for image-conditioned inference and training.
+- [x] Provide detailed instructions for inference.
+- [ ] Provide detailed instructions for training.
 - [ ] Implement a Gradio demo.
 
 
@@ -70,13 +70,17 @@ bash settings/setup.sh
 
 ## 🚀 Usage
 
+### 📷 Camera Conventions
+
+The camera and world coordinate systems in this project are both defined in the `OpenGL` convention, i.e., X: right, Y: up, Z: backward. The camera is located at `(0, 0, 1.4)` in the world coordinate system, and the camera looks at the origin `(0, 0, 0)`.
+Please refer to [kiuikit camera doc](https://kit.kiui.moe/camera) for visualizations of the camera and world coordinate systems.
+
 ### 🤗 Pretrained Models
 
 All pretrained models are available at [HuggingFace🤗](https://huggingface.co/chenguolin/DiffSplat).
 
 | **Model Name**                | **Fine-tined From** | **#Param.** | **Link** | **Note** |
 |-------------------------------|---------------------|-------------|----------|----------|
-| **ElevEst**                   | [dinov2_vitb14_reg](https://github.com/facebookresearch/dinov2)                    | 86 M            | [elevest_gobj265k_b_C25](https://huggingface.co/chenguolin/DiffSplat/tree/main/elevest_gobj265k_b_C25)         | (Optional) Single-image elevation estimation        |
 | **GSRecon**                   | From scratch                    | 42M            | [gsrecon_gobj265k_cnp_even4](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsrecon_gobj265k_cnp_even4)         | Feed-forward reconstruct per-pixel 3DGS from (RGB, normal, point) maps         |
 | **GSVAE (SD)**                | [SD1.5 VAE](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)                    | 84M            | [gsvae_gobj265k_sd](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsvae_gobj265k_sd)         |          |
 | **GSVAE (SDXL)**              | [SDXL fp16 VAE](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)                    | 84M            | [gsvae_gobj265k_sdxl_fp16](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsvae_gobj265k_sdxl_fp16)         | fp16-fixed SDXL VAE is more robust         |
@@ -85,6 +89,7 @@ All pretrained models are available at [HuggingFace🤗](https://huggingface.co/
 | **DiffSplat (PixArt-Sigma)** | [PixArt-Sigma](https://huggingface.co/PixArt-alpha/PixArt-Sigma-XL-2-512-MS)                    | 0.61B            | Text-cond: [gsdiff_gobj83k_pas_fp16__render](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsdiff_gobj83k_pas_fp16__render)<br> Image-cond: [gsdiff_gobj83k_pas_fp16_image__render](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsdiff_gobj83k_pas_fp16_image__render)         | Best Trade-off         |
 | **DiffSplat (SD3.5m)**         | [SD3.5 median](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium)                    | 2.24B            | Text-cond: [gsdiff_gobj83k_sd35m__render](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsdiff_gobj83k_sd35m__render)<br> Image-cond: [gsdiff_gobj83k_sd35m_image__render](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsdiff_gobj83k_sd35m_image__render)         | Best performance        |
 | **DiffSplat ControlNet (SD1.5)**         | From scratch                    | 361M            | Depth: [gsdiff_gobj83k_sd15__render__depth](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsdiff_gobj83k_sd15__render__depth)<br> Normal: [gsdiff_gobj83k_sd15__render__normal](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsdiff_gobj83k_sd15__render__normal)<br> Canny: [gsdiff_gobj83k_sd15__render__canny](https://huggingface.co/chenguolin/DiffSplat/tree/main/gsdiff_gobj83k_sd15__render__canny)         |          |
+| **(Optional) ElevEst**                   | [dinov2_vitb14_reg](https://github.com/facebookresearch/dinov2)                    | 86 M            | [elevest_gobj265k_b_C25](https://huggingface.co/chenguolin/DiffSplat/tree/main/elevest_gobj265k_b_C25)         | (Optional) Single-view image elevation estimation        |
 
 
 ### ⚡ Inference
@@ -97,19 +102,19 @@ Note that:
 - If you face problems in visiting HuggingFace Hub, you can try to set the environment variable `export HF_ENDPOINT=https://hf-mirror.com`.
 
 ```bash
-python3 ./download_ckpt.py --model_type [MODEL_TYPE] [--image_cond]
+python3 download_ckpt.py --model_type [MODEL_TYPE] [--image_cond]
 
-# `MODEL_TYPE`: choose from "sd15", "pas", "sd35m", "depth", "normal", "canny"
+# `MODEL_TYPE`: choose from "sd15", "pas", "sd35m", "depth", "normal", "canny", "elevest".
 # `--image_cond`: add this flag for downloading image-conditioned models
 ```
 
 For example, to download the `text-cond SD1.5-based DiffSplat`:
 ```bash
-python3 ./download_ckpt.py --model_type sd15
+python3 download_ckpt.py --model_type sd15
 ```
 To download the `image-cond PixArt-Sigma-based DiffSplat`:
 ```bash
-python3 ./download_ckpt.py --model_type pas --image_cond
+python3 download_ckpt.py --model_type pas --image_cond
 ```
 
 #### 1. Text-conditioned 3D Object Generation
@@ -154,9 +159,9 @@ You will get:
     - `--guidance_scale`: classifier-free guidance (CFG) scale; `1.0` means no CFG.
     - `--eta`: specified for `DDIM` scheduler; the weight of noise for added noise in diffusion steps.
 - [Instant3D](https://instant-3d.github.io) tricks:
-    - `--init_std`, `--init_noise_strength`, `--init_bg`: initial noise settings, cf. [Instant3D](https://instant-3d.github.io) Sec. 3.1; NOT used by default, as we found it's not that helpful in our case.
+    - `--init_std`, `--init_noise_strength`, `--init_bg`: initial noise settings, cf. [Instant3D Sec. 3.1](https://arxiv.org/pdf/2311.06214); NOT used by default, as we found it's not that helpful in our case.
 - Others:
-    - `--elevation`: elevation for viewing and rendering; not necessary for text-conditioned generation; set to `10` by default (from xz-plane to +y axis).
+    - `--elevation`: elevation for viewing and rendering; not necessary for text-conditioned generation; set to `10` by default (from xz-plane (`0`) to +y axis (`90`)).
     - `--negative_prompt`: empty prompt (`""`) by default; used with CFG for better visual quality (e.g., more vibrant colors), but we found it causes lower metric values (such as [ImageReward](https://github.com/THUDM/ImageReward)).
     - `--save_ply`: save the generated 3DGS as a `.ply` file; used with `--opacity_threshold_ply` to filter out low-opacity splats for much smaller `.ply` file size.
     - `--eval_text_cond`: evaluate text-conditioned generation automatically.
@@ -167,13 +172,82 @@ Please refer to [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py), [infer_gsdiff_pa
 #### 2. Image-conditioned 3D Object Generation
 
 Note that:
-- Most of the arguments are the same as text-conditioned generation. The only difference is that you need to specify an image path as condition. Our method support **text and image as conditions simultaneously**.
+- Most of the arguments are the same as text-conditioned generation. Our method support **text and image as conditions simultaneously**.
+- Elevation is necessary for image-conditioned generation. You can specify the elevation angle by `--elevation` for viewing and rendering (from xz-plane (`0`) to +y axis (`90`)) or estimate it from the input image by `--use_elevest` (download the pretrained `ElevEst` model by `python3 download_ckpt.py --model_type elevest`) first. But we found that the **estimated elevation is not always accurate**, so it's better to set it manually.
+- Text prompt is **optional** for image-conditioned generation. If you want to use text prompt, you can specify it by `--prompt` (e.g., `a_frog`), otherwise, empty prompt (`""`) will be used. Note that **DiffSplat (SD3.5m)** is sensitive to text prompts, and it may generate bad results without a proper prompt.
+- Remember to set a smaller `--guidance_scale` for image-conditioned generation, as the default value is set for text-conditioned generation. `2.0` is recommended for most cases.
+- `--triangle_cfg_scaling` is a trick that set larger CFG values for far-away views from the input image, while smaller CFG values for close-up views, cf. [SV3D Sec. 3](https://arxiv.org/pdf/2403.12008).
+- `--rembg_and_center` will remove the background and center the object in the image. It can be used with `--rembg_model_name` (by default `u2net`) and `--border_ratio` (by default `0.2`).
+- Image-conditioned generation is more sensitive to arguments, and you may need to tune them for better results.
 
-Instructions for image-conditioned generation will be provided soon.
+```bash
+# DiffSplat (SD1.5)
+bash scripts/infer.sh src/infer_gsdiff_sd.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15_image__render \
+--rembg_and_center --triangle_cfg_scaling --output_video_type gif --guidance_scale 2 \
+--image_path assets/grm/frog.png --elevation 20 --prompt a_frog
+
+# DiffSplat (PixArt-Sigma)
+bash scripts/infer.sh src/infer_gsdiff_pas.py configs/gsdiff_pas.yaml gsdiff_gobj83k_pas_fp16_image__render \
+--rembg_and_center --triangle_cfg_scaling --output_video_type gif --guidance_scale 2 \
+--image_path assets/grm/frog.png --elevation 20 --prompt a_frog
+
+# DiffSplat (SD3.5m)
+bash scripts/infer.sh src/infer_gsdiff_sd3.py configs/gsdiff_sd35m_80g.yaml gsdiff_gobj83k_sd35m_image__render \
+--rembg_and_center --triangle_cfg_scaling --output_video_type gif --guidance_scale 2 \
+--image_path assets/grm/frog.png --elevation 20 --prompt a_frog
+```
+
+You will get
+| Arguments | DiffSplat (SD1.5) | DiffSplat (PixArt-Sigma) | DiffSplat (SD3.5m) |
+|---------|-------------------------|-------------------------------|-------------------------|
+| `--elevation 20 --prompt a_frog` | ![sd15_image](./assets/_demo/a_frog/sd15.gif) | ![pas_image](./assets/_demo/a_frog/pas.gif) | ![sd35m_image](./assets/_demo/a_frog/sd35m.gif) |
+| `--use_elevest --prompt a_frog` (estimated elevation: -0.78 deg) | ![sd15_image](./assets/_demo/a_frog_elevest/sd15.gif) | ![pas_image](./assets/_demo/a_frog_elevest/pas.gif) | ![sd35m_image](./assets/_demo/a_frog_elevest/sd35m.gif) |
+| `--elevation 20` (prompt is `""`) | ![sd15_image](./assets/_demo/a_frog_empty/sd15.gif) | ![pas_image](./assets/_demo/a_frog_empty/pas.gif) | ![sd35m_image](./assets/_demo/a_frog_empty/sd35m.gif) |
+
+Please refer to [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py), [infer_gsdiff_pas.py](./src/infer_gsdiff_pas.py), and [infer_gsdiff_sd3.py](./src/infer_gsdiff_sd3.py) for more argument details.
 
 #### 3. ControlNet for 3D Object Generation
 
-Instructions for ControlNet-based generation will be provided soon.
+Note that:
+- After downloading pretrained **DiffSplat (SD1.5)**, you shoule download the controlnet weights by `python3 download_ckpt.py --model_type [depth | normal | canny]`.
+- For **depth-controlnet**, values in depth maps are normalized to `[0, 1]` and larger values (white) mean closer to the camera (smaller depth). Please refer to [GObjaverse Dataset](./src/data/gobjaverse_parquet_dataset.py) for more details.
+- For **normal-controlnet**, input camera is normalized to locate at `(0, 0, 1.4)` and look at `(0, 0, 0)`, thus the input normal maps are transformed accordingly. Please refer to [GObjaverse Dataset](./src/data/gobjaverse_parquet_dataset.py) for more details.
+- For **canny-controlnet**, canny edges are extracted from the input RGB images automatically by `cv2.Canny`. Please refer to [GObjaverse Dataset](./src/data/gobjaverse_parquet_dataset.py) for more details.
+
+```bash
+# ControlNet (depth)
+bash scripts/infer.sh src/infer_gsdiff_sd.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15__render \
+--load_pretrained_controlnet gsdiff_gobj83k_sd15__render__depth \
+--output_video_type gif --image_path assets/diffsplat/controlnet/toy_depth.png \
+--prompt teddy_bear --elevation 10
+
+# ControlNet (normal)
+bash scripts/infer.sh src/infer_gsdiff_sd.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15__render \
+--load_pretrained_controlnet gsdiff_gobj83k_sd15__render__normal \
+--output_video_type gif --image_path assets/diffsplat/controlnet/robot_normal.png \
+--prompt iron_robot --elevation 10
+
+# ControlNet (canny)
+bash scripts/infer.sh src/infer_gsdiff_sd.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15__render \
+--load_pretrained_controlnet gsdiff_gobj83k_sd15__render__canny \
+--output_video_type gif --image_path assets/diffsplat/controlnet/cookie_canny.png \
+--prompt book --elevation 10
+```
+
+You will get:
+| Original Image | Input Control | `--prompt teddy_bear` | `--prompt panda` |
+|----------------|---------------|-----------------------|--------------------|
+| ![depth_image](./assets/diffsplat/controlnet/toy_image.png) | ![depth](./assets/diffsplat/controlnet/toy_depth.png) | ![controlnet_1](assets/_demo/controlnet/teddy_bear.gif) | ![controlnet_2](assets/_demo/controlnet/panda.gif) |
+
+| Original Image | Input Control | `--prompt iron_robot` | `--prompt plush_dog_toy` |
+|----------------|---------------|-----------------------|--------------------|
+| ![normal_image](./assets/diffsplat/controlnet/robot_image.png) | ![normal](./assets/diffsplat/controlnet/robot_normal.png) | ![controlnet_1](assets/_demo/controlnet/iron_robot.gif) | ![controlnet_2](assets/_demo/controlnet/plush_dog_toy.gif) |
+
+| Original Image | Input Control | `--prompt book` | `--prompt cookie` |
+|----------------|---------------|-----------------|---------------------|
+| ![canny_image](./assets/diffsplat/controlnet/cookie_image.png) | ![canny](./assets/diffsplat/controlnet/cookie_canny.png) | ![controlnet_1](assets/_demo/controlnet/book.gif) | ![controlnet_2](assets/_demo/controlnet/cookie.gif) |
+
+Please refer to [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py) for more argument details.
 
 
 ### 🦾 Training
