@@ -204,6 +204,9 @@ You will get
 | `--use_elevest --prompt a_frog` (estimated elevation: -0.78 deg) | ![sd15_image](./assets/_demo/a_frog_elevest/sd15.gif) | ![pas_image](./assets/_demo/a_frog_elevest/pas.gif) | ![sd35m_image](./assets/_demo/a_frog_elevest/sd35m.gif) |
 | `--elevation 20` (prompt is `""`) | ![sd15_image](./assets/_demo/a_frog_empty/sd15.gif) | ![pas_image](./assets/_demo/a_frog_empty/pas.gif) | ![sd35m_image](./assets/_demo/a_frog_empty/sd35m.gif) |
 
+**More Advanced Arguments**:
+- `--image_dir`: instead of using `--image_path`, `--image_dir` will read images from a directory.
+
 Please refer to [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py), [infer_gsdiff_pas.py](./src/infer_gsdiff_pas.py), and [infer_gsdiff_sd3.py](./src/infer_gsdiff_sd3.py) for more argument details.
 
 #### 3. ControlNet for 3D Object Generation
@@ -247,6 +250,10 @@ You will get:
 |----------------|---------------|-----------------|---------------------|
 | ![canny_image](./assets/diffsplat/controlnet/cookie_image.png) | ![canny](./assets/diffsplat/controlnet/cookie_canny.png) | ![controlnet_1](assets/_demo/controlnet/book.gif) | ![controlnet_2](assets/_demo/controlnet/cookie.gif) |
 
+**More Advanced Arguments**:
+- `--guess_mode`: ControlNet encoder tries to recognize the content of the input image even if you remove all prompts, cf. [the original ControlNet repo](https://github.com/lllyasviel/ControlNet#guess-mode--non-prompt-mode) and [HF ControlNet](https://huggingface.co/docs/diffusers/using-diffusers/controlnet#guess-mode).
+- `--controlnet_scale`: determines how much weight to assign to the conditioning inputs; outputs of the ControlNet are multiplied by `controlnet_scale` before they are added to the residual in the original UNet.
+
 Please refer to [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py) for more argument details.
 
 
@@ -272,7 +279,7 @@ Instructions for `DiffSplat` training will be provided soon.
 
 #### 4. ControlNet
 
-Please refer to [train_gsdiff_sd_controlnet.py](./src/train_gsdiff_sd_controlnet.py) and [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py).
+Please refer to [train_gsdiff_sd_controlnet.py](./src/train_gsdiff_sd_controlnet.py).
 
 Instructions for `ControlNet` training and inference will be provided soon.
 
