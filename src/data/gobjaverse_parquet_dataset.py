@@ -44,10 +44,6 @@ class GObjaverseParquetDataset(ChunkedDataset):
                     self.negative_prompt_embed = torch.zeros_like(self.negative_prompt_embed)
                     self.negative_pooled_prompt_embed = torch.zeros_like(self.negative_pooled_prompt_embed)
 
-        # Backup from local disk for error data loading
-        with open(opt.backup_json_path, "r") as f:
-            self.backup_ids = json.load(f)
-
         super().__init__(*args, **kwargs)
 
     def __len__(self):
@@ -240,12 +236,7 @@ class GObjaverseParquetDataset(ChunkedDataset):
         return png_tensor.permute(2, 0, 1)  # (C, H, W) in [0, 1]
 
     def _load_camera_from_json(self, json_bytes: Union[bytes, str]) -> ndarray:
-        if isinstance(json_bytes, bytes):
-            json_dict = json.loads(json_bytes)
-        else:  # BACKUP
-            path = os.path.join(self.opt.backup_file_dir, f"{json_bytes}.json")
-            with open(path, "r") as f:
-                json_dict = json.load(f)
+        json_dict = json.loads(json_bytes)
 
         # In OpenCV convention
         c2w = np.eye(4)  # float64
@@ -278,12 +269,5 @@ class GObjaverseParquetDataset(ChunkedDataset):
             try:
                 assert sample[f"{vid:05d}.png"] is not None and sample[f"{vid:05d}.json"] is not None
             except:  # TypeError: a bytes-like object is required, not 'NoneType'; KeyError: '00001.json'
-                return False
-        return True
-
-    def _check_views_exist_disk(self, uid: str, vids: List[int]) -> bool:
-        for vid in vids:
-            if not (os.path.exists(os.path.join(self.opt.backup_file_dir, f"{uid}.{vid:05d}.png"))
-                and os.path.exists(os.path.join(self.opt.backup_file_dir, f"{uid}.{vid:05d}.json"))):
                 return False
         return True
