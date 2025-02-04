@@ -30,7 +30,6 @@ class Options:
     dataset_name: Literal[
         "gobj83k",
         "gobj265k",
-        "gobj1m",
     ] = "gobj83k"
     dataset_size: int = None  # set later
     prompt_embed_dir: Optional[str] = None  # set later
