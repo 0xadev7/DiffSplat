@@ -40,7 +40,7 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 
 - **2025-02-02**: Inference instructions (text-conditioned & image-conditioned & controlnet) are provided.
 - **2025-01-29**: The source code and pretrained models are released. Happy 🐍 Chinese New Year 🎆!
-- **2025-01-22**: InstructScene is accepted to ICLR 2025.
+- **2025-01-22**: DiffSplat is accepted to ICLR 2025.
 
 
 ## 📋 TODO
