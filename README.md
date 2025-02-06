@@ -40,6 +40,7 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 
 ## 📢 News
 
+- **2025-02-06**: Gradio demo is available! Check it out [here](https://huggingface.co/spaces/paulpanwang/Diffsplat). Thanks to [@paulpanwang](https://github.com/paulpanwang)🫡！
 - **2025-02-02**: Inference instructions (text-conditioned & image-conditioned & controlnet) are provided.
 - **2025-01-29**: The source code and pretrained models are released. Happy 🐍 Chinese New Year 🎆!
 - **2025-01-22**: DiffSplat is accepted to ICLR 2025.
@@ -48,8 +49,8 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 ## 📋 TODO
 
 - [x] Provide detailed instructions for inference.
+- [x] Implement a Gradio demo.
 - [ ] Provide detailed instructions for training.
-- [ ] Implement a Gradio demo.
 
 
 ## 🔧 Installation
