@@ -9,6 +9,8 @@ DiffSplat: Repurposing Image Diffusion Models for Scalable Gaussian Splat Genera
 [![arXiv](https://img.shields.io/badge/arXiv-2501.16764-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2501.16764)
 [![Project page](https://img.shields.io/badge/Project-Page-brightgreen)](https://chenguolin.github.io/projects/DiffSplat)
 [![Model](https://img.shields.io/badge/HF-Model-yellow)](https://huggingface.co/chenguolin/DiffSplat)
+[![Space](https://img.shields.io/badge/HF-Space-yellow)](https://huggingface.co/spaces/paulpanwang/Diffsplat)
+
 
 <p>
     <img width="144" src="./assets/_demo/1.gif">
