@@ -262,6 +262,17 @@ Please refer to [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py) for more argument
 
 ### 🦾 Training
 
+#### 0. Project Overview
+
+##### `extensions/diffusers_diffsplat`
+I manually modified the latest `diffusers` library (`diffusers==0.32`) and tried to comment in detail on codes to clarify modifications. The folder structure is the same as the original repo.
+
+Generally:
+- Modifications in `diffusers_diffsplat/models` are most for (1) "multi-view attention" that gets inputs in `(B*V, N, D)` then operates the attention operation in `(B, V*N, D)`, (2) a new function `from_pretrained_new()` for UNet and Transformer that initializes models with different input channels, e.g., 4 (SD latent) in the original Stable Diffusion, while 10 or 11 (RGB + plucker + (optional) binary mask) for our DiffSplat.
+- `diffusers_diffsplat/pipelines` are implemented for each base model in `diffusers_diffsplat/models` accordingly with some fancy functions (such as Instant3D-style noise initialization), which are however not really used.
+- `diffusers_diffsplat/schedulers` are only for `DPM-Solver++ flow matching scheduler`, which is copied from [the diffusers PR](https://github.com/huggingface/diffusers/pull/9982) and not really used.
+- `diffusers_diffsplat/training_utils.py` is only for `EMAModel` that can really set `self.use_ema_warmup` as described in [the diffusers PR](https://github.com/huggingface/diffusers/pull/9812).
+
 #### 1. GSRecon
 
 Please refer to [train_gsrecon.py](./src/train_gsrecon.py).
