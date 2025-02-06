@@ -424,7 +424,7 @@ def main():
         if args.use_ema:
             ema_states.load_state_dict(torch.load(
                 os.path.join(ckpt_dir, f"{args.resume_from_iter:06d}", "ema_states.pth"),
-                map_location=accelerator.device
+                map_location=accelerator.device,
             ))
         global_update_step = int(args.resume_from_iter)
 

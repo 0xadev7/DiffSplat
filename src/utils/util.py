@@ -26,7 +26,7 @@ def load_ckpt(
             ckpt_iter = int(sorted(os.listdir(ckpt_dir))[-1])
 
     # Download checkpoint
-    ckpt_path = f"{ckpt_dir}/{ckpt_iter:06d}"
+    ckpt_path = f"{ckpt_dir}/{ckpt_iter:06d}" + ("/ema_states.pth" if use_ema else "")
     if not os.path.exists(ckpt_path):
         assert hdfs_dir is not None
         if accelerator is not None:
@@ -44,12 +44,13 @@ def load_ckpt(
 
     if model is None:
         return ckpt_iter
+
     # Load checkpoint
     else:
-        try:
+        ckpt_dir = f"{ckpt_dir}/{ckpt_iter:06d}"
+        if not os.path.exists(f"{ckpt_dir}/zero_to_fp32.py"):
             load_checkpoint_and_dispatch(model, ckpt_path, strict=strict)
-        except:  # from DeepSpeed
-            ckpt_dir = f"{ckpt_dir}/{ckpt_iter:06d}"
+        else:  # from DeepSpeed
             if accelerator is not None:
                 if accelerator.is_main_process:
                     ensure_sysrun(f"python3 {ckpt_dir}/zero_to_fp32.py {ckpt_dir} {ckpt_dir} --safe_serialization")
