@@ -40,7 +40,7 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 
 ## 📢 News
 
-- **2025-02-06**: Gradio demo is available! Check it out [here](./app.py). Thanks to [@paulpanwang](https://github.com/paulpanwang)🫡！
+- **2025-02-06**: Gradio demo is available! Check it out [here](./app.py). Thanks to [@paulpanwang](https://github.com/paulpanwang)🫡! (will update soon)
 - **2025-02-02**: Inference instructions (text-conditioned & image-conditioned & controlnet) are provided.
 - **2025-01-29**: The source code and pretrained models are released. Happy 🐍 Chinese New Year 🎆!
 - **2025-01-22**: DiffSplat is accepted to ICLR 2025.
@@ -200,7 +200,7 @@ bash scripts/infer.sh src/infer_gsdiff_sd3.py configs/gsdiff_sd35m_80g.yaml gsdi
 --image_path assets/grm/frog.png --elevation 20 --prompt a_frog
 ```
 
-You will get
+You will get:
 | Arguments | DiffSplat (SD1.5) | DiffSplat (PixArt-Sigma) | DiffSplat (SD3.5m) |
 |---------|-------------------------|-------------------------------|-------------------------|
 | `--elevation 20 --prompt a_frog` | ![sd15_image](./assets/_demo/a_frog/sd15.gif) | ![pas_image](./assets/_demo/a_frog/pas.gif) | ![sd35m_image](./assets/_demo/a_frog/sd35m.gif) |
