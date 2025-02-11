@@ -226,7 +226,7 @@ class GObjaverseParquetDataset(ChunkedDataset):
 
         return dict(return_dict)
 
-    def _load_png(self, png_bytes: Union[bytes, str], uint16: bool = False) -> Tensor:
+    def _load_png(self, png_bytes: bytes, uint16: bool = False) -> Tensor:
         png = np.frombuffer(png_bytes, np.uint8)
         png = cv2.imdecode(png, cv2.IMREAD_UNCHANGED)  # (H, W, C) ndarray in [0, 255] or [0, 65553]
 
@@ -235,7 +235,7 @@ class GObjaverseParquetDataset(ChunkedDataset):
         png_tensor = torch.from_numpy(png).nan_to_num_(0.)  # there are nan in GObjaverse gt normal
         return png_tensor.permute(2, 0, 1)  # (C, H, W) in [0, 1]
 
-    def _load_camera_from_json(self, json_bytes: Union[bytes, str]) -> ndarray:
+    def _load_camera_from_json(self, json_bytes: bytes) -> ndarray:
         json_dict = json.loads(json_bytes)
 
         # In OpenCV convention

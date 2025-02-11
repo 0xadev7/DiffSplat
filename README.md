@@ -103,6 +103,7 @@ Note that:
 - Pretrained weights will download from HuggingFace and stored in `./out`.
 - Other pretrained models (such as CLIP, T5, image VAE, etc.) will be downloaded automatically and stored in your HuggingFace cache directory.
 - If you face problems in visiting HuggingFace Hub, you can try to set the environment variable `export HF_ENDPOINT=https://hf-mirror.com`.
+- `GSRecon` pretrained weights is NOT really used during inference. Only its rendering function is used for visualization.
 
 ```bash
 python3 download_ckpt.py --model_type [MODEL_TYPE] [--image_cond]
@@ -265,7 +266,7 @@ Please refer to [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py) for more argument
 #### 0. Project Overview
 
 ##### `extensions/diffusers_diffsplat`
-I manually modified the latest `diffusers` library (`diffusers==0.32`) and tried to comment in detail on codes to clarify modifications. The folder structure is the same as the original repo.
+We manually modified the latest `diffusers` library (`diffusers==0.32`) and tried to comment in detail on codes to clarify modifications. The folder structure is the same as the original repo.
 
 Generally:
 - Modifications in `diffusers_diffsplat/models` are most for (1) "multi-view attention" that gets inputs in `(B*V, N, D)` then operates the attention operation in `(B, V*N, D)`, (2) a new function `from_pretrained_new()` for UNet and Transformer that initializes models with different input channels, e.g., 4 (SD latent) in the original Stable Diffusion, while 10 or 11 (RGB + plucker + (optional) binary mask) for our DiffSplat.
@@ -273,29 +274,84 @@ Generally:
 - `diffusers_diffsplat/schedulers` are only for `DPM-Solver++ flow matching scheduler`, which is copied from [the diffusers PR](https://github.com/huggingface/diffusers/pull/9982) and not really used.
 - `diffusers_diffsplat/training_utils.py` is only for `EMAModel` that can really set `self.use_ema_warmup` as described in [the diffusers PR](https://github.com/huggingface/diffusers/pull/9812).
 
+##### `src/data/gobjaverse_parquet_dataset.py`
+
+We preprocess the original GObjaverse dataset and store it in a parquet format for efficient dataloading from an internal HDFS. The parquet format is NOT necessary, and you can implement your own dataloading logic.
+
+Here is our preprocessing script for your reference:
+```python
+# Code snippet for GObjaverse dataset preprocessing; NOT runnable
+# ...
+
+outputs = {
+    "__key__": objaverse_id,
+    "uid": objaverse_id.encode("utf-8"),
+}
+
+dir_id, object_id = item.split("/")
+object_dir = os.path.join(SAVE_DIR, dir_id, object_id, "campos_512_v4")
+
+for i in range(40):  # hard-coded `40` views
+    view_dir = os.path.join(object_dir, f"{i:05}")
+    image_path = os.path.join(view_dir, f"{i:05}.png")
+    albedo_path = os.path.join(view_dir, f"{i:05}_albedo.png")
+    mr_path = os.path.join(view_dir, f"{i:05}_mr.png")
+    nd_path = os.path.join(view_dir, f"{i:05}_nd.exr")
+    transform_path = os.path.join(view_dir, f"{i:05}.json")
+
+    # Use `tf.io.encode_png` to encode images to compact bytes
+    try:
+        outputs[f"{i:05}.png"] = tf.io.encode_png(tf.convert_to_tensor(imageio.imread(image_path), tf.uint8)).numpy()
+        outputs[f"{i:05}_albedo.png"] = tf.io.encode_png(tf.convert_to_tensor(imageio.imread(albedo_path)[:, :, :3], tf.uint8)).numpy()
+        outputs[f"{i:05}_mr.png"] = tf.io.encode_png(tf.convert_to_tensor(imageio.imread(mr_path)[:, :, :3], tf.uint8)).numpy()
+        nd = cv2.imread(nd_path, cv2.IMREAD_UNCHANGED)
+        nd[:, :, :3] = nd[:, :, :3][..., ::-1]  # BGR -> RGB
+        nd[:, :, :3] = (nd[:, :, :3] * 0.5 + 0.5) * 65535  # [-1., 1.] -> [0, 65535]
+        nd[:, :, 3] = nd[:, :, 3] / 5. * 65535  # scale the depth by 1/5, then it must be in [0, 1]; [0., +?) -> [0, 65535]
+        outputs[f"{i:05}_nd.png"] = tf.io.encode_png(tf.convert_to_tensor(nd, tf.uint16)).numpy()
+        with open(transform_path, "r") as f:
+            outputs[f"{i:05}.json"] = f.read().encode("utf-8")
+
+        if outputs[f"{i:05}.png"] is None or outputs[f"{i:05}_albedo.png"] is None or \
+            outputs[f"{i:05}_mr.png"] is None or outputs[f"{i:05}_nd.png"] is None or \
+            outputs[f"{i:05}.json"] is None:
+            continue  # ignore broken files
+    except:
+        continue  # ignore broken files
+
+    # Then `outputs: Dict[str, bytes]` is stored as a parquet file
+    # ...
+```
+
 #### 1. GSRecon
 
-Please refer to [train_gsrecon.py](./src/train_gsrecon.py).
+Set environment variables in `scripts/train.sh` first, then:
+```bash
+bash scripts/train.sh src/train_gsrecon.py configs/gsrecon.yaml gsrecon_gobj265k_cnp_even4
+```
 
-Instructions for `GSRecon` training will be provided soon.
+Please refer to [train_gsrecon.py](./src/train_gsrecon.py) and options are specified in `configs/gsrecon.yaml` and `src/options.py` (`opt_dict["gsrecon"]`).
 
 #### 2. GSVAE
 
-Please refer to [train_gsvae.py](./src/train_gsvae.py).
+Set environment variables in `scripts/train.sh` first, then (`GSVAE (SDXL)` as an example):
+```bash
+bash scripts/train.sh src/train_gsvae.py configs/gsvae.yaml gsvae_gobj265k_sdxl_fp16 opt_type=gsvae_sdxl_fp16 --gradient_accumulation_steps 4
+```
 
-Instructions for `GSVAE` training will be provided soon.
+Please refer to [train_gsvae.py](./src/train_gsvae.py) and options are specified in `configs/gsvae.yaml` and `src/options.py` (`opt_dict["gsvae"]`, `opt_dict["gsvae_sdxl_fp16"]` and `opt_dict["gsvae_sd35m"]`).
 
 #### 3. DiffSplat
 
-Please refer to [train_gsdiff_sd.py](./src/train_gsdiff_sd.py), [train_gsdiff_pas.py](./src/train_gsdiff_pas.py), and [train_gsdiff_sd3.py](./src/train_gsdiff_sd3.py).
+Please refer to [train_gsdiff_sd.py](./src/train_gsdiff_sd.py), [train_gsdiff_sdxl.py](./src/train_gsdiff_sdxl.py), [train_gsdiff_paa.py](./src/train_gsdiff_paa.py), [train_gsdiff_pas.py](./src/train_gsdiff_pas.py), and [train_gsdiff_sd3.py](./src/train_gsdiff_sd3.py).
 
 Instructions for `DiffSplat` training will be provided soon.
 
 #### 4. ControlNet
 
-Please refer to [train_gsdiff_sd_controlnet.py](./src/train_gsdiff_sd_controlnet.py).
+Please refer to [train_gsdiff_sd_controlnet.py](./src/train_gsdiff_sd_controlnet.py) and [train_gsdiff_sdxl_controlnet.py](./src/train_gsdiff_sdxl_controlnet.py).
 
-Instructions for `ControlNet` training and inference will be provided soon.
+Instructions for `ControlNet` training will be provided soon.
 
 
 ## 😊 Acknowledgement
