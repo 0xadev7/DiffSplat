@@ -25,7 +25,7 @@ def text_encode(
     text_encoder_3: Optional[T5EncoderModel] = None,
     tokenizer_3: Optional[T5TokenizerFast] = None,
 ):
-    global caption_dict, MODEL_NAME, BATCH, use_special_words, dataset_name
+    global caption_dict, MODEL_NAME, BATCH, dataset_name
     device = f"cuda:{gpu_id}"
 
     text_encoder = text_encoder.to(device)
@@ -39,11 +39,7 @@ def text_encode(
 
     for i in tqdm(range(0, len(oids), BATCH), desc=pretrained_model_name_or_path, ncols=125):
         batch_oids = oids[i:min(i+BATCH, len(oids))]
-        batch_captions = [
-            "3d asset in the sks style: " if use_special_words else "" +
-            caption_dict[oid]
-            for oid in batch_oids
-        ]
+        batch_captions = [caption_dict[oid] for oid in batch_oids]
 
         if MODEL_NAME in ["sd15", "sd21"]:
             batch_text_inputs = tokenizer(
@@ -157,7 +153,6 @@ if __name__ == "__main__":
     args.add_argument("model_name", type=str, choices=["sd15", "sd21", "sdxl", "paa", "pas", "sd3m", "sd35m", "sd35l"])
     args.add_argument("--batch_size", type=int, default=128)
     args.add_argument("--dataset_name", default="gobj83k", choices=["gobj265k", "gobj83k"])
-    args.add_argument("--use_special_words", action="store_true")
     args = args.parse_args()
 
     MODEL_NAME = args.model_name
@@ -174,7 +169,6 @@ if __name__ == "__main__":
     NUM_GPU = torch.cuda.device_count()
     BATCH = args.batch_size
     dataset_name = args.dataset_name
-    use_special_words = args.use_special_words
 
     variant = "fp16" if MODEL_NAME not in ["pas", "sd3m", "sd35m", "sd35l"] else None  # text encoders of PAS and SD3(.5) are already in fp16
 

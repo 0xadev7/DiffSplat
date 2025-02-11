@@ -319,7 +319,7 @@ for i in range(40):  # hard-coded `40` views
     except:
         continue  # ignore broken files
 
-    # Then `outputs: Dict[str, bytes]` is stored as a parquet file
+    # Then `outputs: Dict[str, bytes]` is stored in a parquet file
     # ...
 ```
 
@@ -330,7 +330,7 @@ Set environment variables in `scripts/train.sh` first, then:
 bash scripts/train.sh src/train_gsrecon.py configs/gsrecon.yaml gsrecon_gobj265k_cnp_even4
 ```
 
-Please refer to [train_gsrecon.py](./src/train_gsrecon.py) and options are specified in `configs/gsrecon.yaml` and `src/options.py` (`opt_dict["gsrecon"]`).
+Please refer to [train_gsrecon.py](./src/train_gsrecon.py) and options are specified in [configs/gsrecon.yaml](./configs/gsrecon.yaml) and [options.py](./src/options.py) (`opt_dict["gsrecon"]`).
 
 #### 2. GSVAE
 
@@ -339,17 +339,25 @@ Set environment variables in `scripts/train.sh` first, then (`GSVAE (SDXL)` as a
 bash scripts/train.sh src/train_gsvae.py configs/gsvae.yaml gsvae_gobj265k_sdxl_fp16 opt_type=gsvae_sdxl_fp16 --gradient_accumulation_steps 4
 ```
 
-Please refer to [train_gsvae.py](./src/train_gsvae.py) and options are specified in `configs/gsvae.yaml` and `src/options.py` (`opt_dict["gsvae"]`, `opt_dict["gsvae_sdxl_fp16"]` and `opt_dict["gsvae_sd35m"]`).
+Please refer to [train_gsvae.py](./src/train_gsvae.py) and options are specified in [configs/gsvae.yaml](./configs/gsvae.yaml) and [options.py](./src/options.py) (`opt_dict["gsvae"]`, `opt_dict["gsvae_sdxl_fp16"]` and `opt_dict["gsvae_sd35m"]`).
 
 #### 3. DiffSplat
 
-Please refer to [train_gsdiff_sd.py](./src/train_gsdiff_sd.py), [train_gsdiff_sdxl.py](./src/train_gsdiff_sdxl.py), [train_gsdiff_paa.py](./src/train_gsdiff_paa.py), [train_gsdiff_pas.py](./src/train_gsdiff_pas.py), and [train_gsdiff_sd3.py](./src/train_gsdiff_sd3.py).
+Text embeddings for captions are precomputed by [extensions/encode_prompt_embeds.py](./extensions/encode_prompt_embeds.py):
+```python
+python3 extensions/encode_prompt_embeds.py [MODEL_NAME] [--batch_size 128] [--dataset_name gobj83k]
+
+# `MODEL_NAME`: choose from "sd15", "sd21", "sdxl", "paa", "pas", "sd3m", "sd35m", "sd35l"
+```
+Captions will download automatically in `extensions/assets` and text embeddings are stored in `/tmp/{DATASET_NAME}_{MODEL_NAME}_prompt_embeds` by default.
+
+Please refer to [train_gsdiff_{sd, sdxl, paa, pas, sd3}.py](./src/train_gsdiff_sd.py) and options are specified in [configs/gsdiff_{sd, sdxl_80g, paa,pas, sd3m_80g, sd35m_80g}.yaml](./configs/gsdiff_sd15.yaml) and [options.py](./src/options.py) (`opt_dict["gsdiff_sd15"]`, `opt_dict["gsdiff_sdxl"]`, `opt_dict["gsdiff_paa"]`, `opt_dict["gsdiff_pas"]`, `opt_dict["gsdiff_sd3m"]` and `opt_dict["gsdiff_sd35m"]`).
 
 Instructions for `DiffSplat` training will be provided soon.
 
 #### 4. ControlNet
 
-Please refer to [train_gsdiff_sd_controlnet.py](./src/train_gsdiff_sd_controlnet.py) and [train_gsdiff_sdxl_controlnet.py](./src/train_gsdiff_sdxl_controlnet.py).
+Please refer to [train_gsdiff_{sd, sdxl}_controlnet.py](./src/train_gsdiff_sd_controlnet.py) and options are in [configs/gsdiff_{sd15, sdxl}_controlnet.yaml](./configs/gsdiff_sd15_controlnet.yaml) and [options.py](./src/options.py) (`opt_dict["gsdiff_sd15"]` and `opt_dict["gsdiff_sdxl"]`).
 
 Instructions for `ControlNet` training will be provided soon.
 
