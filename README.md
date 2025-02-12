@@ -332,6 +332,8 @@ bash scripts/train.sh src/train_gsrecon.py configs/gsrecon.yaml gsrecon_gobj265k
 
 Please refer to [train_gsrecon.py](./src/train_gsrecon.py) and options are specified in [configs/gsrecon.yaml](./configs/gsrecon.yaml) and [options.py](./src/options.py) (`opt_dict["gsrecon"]`).
 
+Please refer to [issues#12](https://github.com/chenguolin/DiffSplat/issues/12) to infer `GSRecon` with multi-view (4 views) RGB, normal, and coordinate maps.
+
 #### 2. GSVAE
 
 Set environment variables in `scripts/train.sh` first, then (`GSVAE (SDXL)` as an example):
