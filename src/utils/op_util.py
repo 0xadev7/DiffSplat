@@ -29,9 +29,9 @@ def patchify(x: Tensor, patch_size: Union[int, Tuple[int, int]], tokenize: bool 
 
     p1, p2 = patch_size
     if tokenize:
-        return rearrange(x, "b c (h p1) (w p2) -> b (h w) (c p1 p2)", p1=p1, p2=p2)
+        return rearrange(x, "b c (h p1) (w p2) -> b (h w) (p1 p2 c)", p1=p1, p2=p2)
     else:
-        return rearrange(x, "b c (h p1) (w p2) -> b (c p1 p2) h w", p1=p1, p2=p2)
+        return rearrange(x, "b c (h p1) (w p2) -> b (p1 p2 c) h w", p1=p1, p2=p2)
 
 
 def unpatchify(x: Tensor, patch_size: Union[int, Tuple[int, int]], input_size: Union[int, Tuple[int, int]], tokenize: bool = True):
@@ -42,6 +42,6 @@ def unpatchify(x: Tensor, patch_size: Union[int, Tuple[int, int]], input_size: U
 
     (p1, p2), (h, w) = patch_size, input_size
     if tokenize:
-        return rearrange(x, "b (h w) (c p1 p2) -> b c (h p1) (w p2)", h=h, w=w, p1=p1, p2=p2)
+        return rearrange(x, "b (h w) (p1 p2 c) -> b c (h p1) (w p2)", h=h, w=w, p1=p1, p2=p2)
     else:
-        return rearrange(x, "b (c p1 p2) h w -> b c (h p1) (w p2)", p1=p1, p2=p2)
+        return rearrange(x, "b (p1 p2 c) h w -> b c (h p1) (w p2)", p1=p1, p2=p2)
