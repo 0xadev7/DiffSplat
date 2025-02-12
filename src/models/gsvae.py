@@ -185,7 +185,8 @@ class GSAutoencoderKL(nn.Module):
 
         render_outputs = gsrecon.gs_renderer.render(recon_model_outputs, input_C2W, input_fxfycxcy, C2W, fxfycxcy)
         for k in render_outputs.keys():
-            render_outputs[k] = render_outputs[k].to(dtype)
+            if isinstance(render_outputs[k], Tensor):
+                render_outputs[k] = render_outputs[k].to(dtype)
         render_images = render_outputs["image"]  # (B, V, 3, H, W)
         render_masks = render_outputs["alpha"]  # (B, V, 1, H, W)
         render_coords = render_outputs["coord"]  # (B, V, 3, H, W)

@@ -86,7 +86,8 @@ class GSRecon(nn.Module):
         model_outputs = self.forward_gaussians(input_images, input_C2W, input_fxfycxcy)
         render_outputs = self.gs_renderer.render(model_outputs, input_C2W, input_fxfycxcy, C2W, fxfycxcy)
         for k in render_outputs.keys():
-            render_outputs[k] = render_outputs[k].to(dtype)
+            if isinstance(render_outputs[k], Tensor):
+                render_outputs[k] = render_outputs[k].to(dtype)
         render_images = render_outputs["image"]  # (B, V, 3, H, W)
         render_masks = render_outputs["alpha"]  # (B, V, 1, H, W)
         render_coords = render_outputs["coord"]  # (B, V, 3, H, W)
