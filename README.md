@@ -9,7 +9,6 @@ DiffSplat: Repurposing Image Diffusion Models for Scalable Gaussian Splat Genera
 [![arXiv](https://img.shields.io/badge/arXiv-2501.16764-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2501.16764)
 [![Project page](https://img.shields.io/badge/Project-Page-brightgreen)](https://chenguolin.github.io/projects/DiffSplat)
 [![Model](https://img.shields.io/badge/HF-Model-yellow)](https://huggingface.co/chenguolin/DiffSplat)
-[![Space](https://img.shields.io/badge/HF-Space-red)](./app.py)
 
 
 <p>
@@ -40,7 +39,7 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 
 ## 📢 News
 
-- **2025-02-06**: Gradio demo is available! Check it out [here](./app.py). Thanks to [@paulpanwang](https://github.com/paulpanwang)🫡! (will update soon)
+- **2025-02-11**: Training instructions for GSRecon and GSVAE are provided.
 - **2025-02-02**: Inference instructions (text-conditioned & image-conditioned & controlnet) are provided.
 - **2025-01-29**: The source code and pretrained models are released. Happy 🐍 Chinese New Year 🎆!
 - **2025-01-22**: DiffSplat is accepted to ICLR 2025.
@@ -49,8 +48,9 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 ## 📋 TODO
 
 - [x] Provide detailed instructions for inference.
-- [x] Implement a Gradio demo.
-- [ ] Provide detailed instructions for training.
+- [x] Provide detailed instructions for GSRecon & GSVAE training.
+- [ ] Provide detailed instructions for DiffSplat training.
+- [ ] Implement a Gradio demo at HuggingFace🤗 Space.
 
 
 ## 🔧 Installation
@@ -60,7 +60,7 @@ There are not restrictions on the `torch` version, feel free to use your preferr
 ```bash
 git clone https://github.com/chenguolin/DiffSplat.git
 cd DiffSplat
-bash settings/setup.sh
+bash settings/setup.
 ```
 
 
@@ -356,12 +356,14 @@ Captions will download automatically in `extensions/assets` and text embeddings 
 Please refer to [train_gsdiff_{sd, sdxl, paa, pas, sd3}.py](./src/train_gsdiff_sd.py) and options are specified in [configs/gsdiff_{sd, sdxl_80g, paa,pas, sd3m_80g, sd35m_80g}.yaml](./configs/gsdiff_sd15.yaml) and [options.py](./src/options.py) (`opt_dict["gsdiff_sd15"]`, `opt_dict["gsdiff_sdxl"]`, `opt_dict["gsdiff_paa"]`, `opt_dict["gsdiff_pas"]`, `opt_dict["gsdiff_sd3m"]` and `opt_dict["gsdiff_sd35m"]`).
 
 Instructions for `DiffSplat` training will be provided soon.
+If you have any questions or requirements about DiffSplat training, please open an issue to push me to do it 😄.
 
 #### 4. ControlNet
 
 Please refer to [train_gsdiff_{sd, sdxl}_controlnet.py](./src/train_gsdiff_sd_controlnet.py) and options are in [configs/gsdiff_{sd15, sdxl}_controlnet.yaml](./configs/gsdiff_sd15_controlnet.yaml) and [options.py](./src/options.py) (`opt_dict["gsdiff_sd15"]` and `opt_dict["gsdiff_sdxl"]`).
 
 Instructions for `ControlNet` training will be provided soon.
+If you have any questions or requirements about ControlNet training, please open an issue to push me to do it 😄.
 
 
 ## 😊 Acknowledgement
