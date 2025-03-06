@@ -39,6 +39,7 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 
 ## 📢 News
 
+- **2025-03-06**: Training instructions for DiffSplat and ControlNet are provided.
 - **2025-02-11**: Training instructions for GSRecon and GSVAE are provided.
 - **2025-02-02**: Inference instructions (text-conditioned & image-conditioned & controlnet) are provided.
 - **2025-01-29**: The source code and pretrained models are released. Happy 🐍 Chinese New Year 🎆!
@@ -49,7 +50,7 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 
 - [x] Provide detailed instructions for inference.
 - [x] Provide detailed instructions for GSRecon & GSVAE training.
-- [ ] Provide detailed instructions for DiffSplat training.
+- [x] Provide detailed instructions for DiffSplat training.
 - [ ] Implement a Gradio demo at HuggingFace🤗 Space.
 
 
@@ -265,7 +266,7 @@ Please refer to [infer_gsdiff_sd.py](./src/infer_gsdiff_sd.py) for more argument
 
 #### 0. Project Overview
 
-##### `extensions/diffusers_diffsplat`
+##### 0.1 `extensions/diffusers_diffsplat`
 We manually modified the latest `diffusers` library (`diffusers==0.32`) and tried to comment in detail on codes to clarify modifications. The folder structure is the same as the original repo.
 
 Generally:
@@ -274,7 +275,7 @@ Generally:
 - `diffusers_diffsplat/schedulers` are only for `DPM-Solver++ flow matching scheduler`, which is copied from [the diffusers PR](https://github.com/huggingface/diffusers/pull/9982) and not really used.
 - `diffusers_diffsplat/training_utils.py` is only for `EMAModel` that can really set `self.use_ema_warmup` as described in [the diffusers PR](https://github.com/huggingface/diffusers/pull/9812).
 
-##### `src/data/gobjaverse_parquet_dataset.py`
+##### 0.2 `src/data/gobjaverse_parquet_dataset.py`
 
 We preprocess the original GObjaverse dataset and store it in a parquet format for efficient dataloading from an internal HDFS. The parquet format is NOT necessary, and you can implement your own dataloading logic.
 
@@ -336,34 +337,124 @@ Please refer to [issues#12](https://github.com/chenguolin/DiffSplat/issues/12) t
 
 #### 2. GSVAE
 
-Set environment variables in `scripts/train.sh` first, then (`GSVAE (SDXL)` as an example):
+##### 2.1 Regular GSVAE
+
+Set environment variables in `scripts/train.sh` first, then:
 ```bash
+# SD1.5 / SD2.1 / PixArt-alpha
+bash scripts/train.sh src/train_gsvae.py configs/gsvae.yaml gsvae_gobj265k_sd opt_type=gsvae --gradient_accumulation_steps 4
+
+# SDXL (fp16-fixed) / PixArt-Sigma
 bash scripts/train.sh src/train_gsvae.py configs/gsvae.yaml gsvae_gobj265k_sdxl_fp16 opt_type=gsvae_sdxl_fp16 --gradient_accumulation_steps 4
+
+# SD3 / SD3.5
+bash scripts/train.sh src/train_gsvae.py configs/gsvae.yaml gsvae_gobj265k_sd3 opt_type=gsvae_sd35m --gradient_accumulation_steps 4
+```
+
+##### 2.2 Tiny GSVAE Decoder
+
+For efficient performing rendering loss in the DiffSplat training stage, we train **tiny decoders** (use pretrained tiny AEs at [here](https://huggingface.co/madebyollin)) with much smaller sizes than the original decoders.
+Note that:
+- Tiny GSVAE decoders are only used in DiffSplat rendering loss, not for the final inference.
+- `opt.freeze_encoder=true`: encoder part of the pretrained GSVAE is fixed.
+- `opt.use_tiny_decoder=true`: use tiny decoder in this stage.
+- `--load_pretrained_model`: load pretrained GSVAE models in the previous stage.
+
+Set environment variables in `scripts/train.sh` first, then:
+```bash
+# Tiny SD1.5 / SD2.1 / PixArt-alpha decoder
+bash scripts/train.sh src/train_gsvae.py configs/gsvae.yaml gsvae_gobj265k_sd opt_type=gsvae train.batch_size_per_gpu=8 opt.freeze_encoder=true opt.use_tiny_decoder=true --load_pretrained_model gsvae_gobj265k_sd
+
+# Tiny SDXL (fp16-fixed) / PixArt-Sigma decoder
+bash scripts/train.sh src/train_gsvae.py configs/gsvae.yaml gsvae_gobj265k_sdxl_fp16 opt_type=gsvae_sdxl_fp16 train.batch_size_per_gpu=8 opt.freeze_encoder=true opt.use_tiny_decoder=true --load_pretrained_model gsvae_gobj265k_sdxl_fp16
+
+# Tiny SD3 / SD3.5 decoder
+bash scripts/train.sh src/train_gsvae.py configs/gsvae.yaml gsvae_gobj265k_sd3 opt_type=gsvae_sd35m train.batch_size_per_gpu=8 opt.freeze_encoder=true opt.use_tiny_decoder=true --load_pretrained_model gsvae_gobj265k_sd3
 ```
 
 Please refer to [train_gsvae.py](./src/train_gsvae.py) and options are specified in [configs/gsvae.yaml](./configs/gsvae.yaml) and [options.py](./src/options.py) (`opt_dict["gsvae"]`, `opt_dict["gsvae_sdxl_fp16"]` and `opt_dict["gsvae_sd35m"]`).
 
 #### 3. DiffSplat
 
+##### 3.0 Text Embedding Precomputation
+
 Text embeddings for captions are precomputed by [extensions/encode_prompt_embeds.py](./extensions/encode_prompt_embeds.py):
-```python
+```bash
 python3 extensions/encode_prompt_embeds.py [MODEL_NAME] [--batch_size 128] [--dataset_name gobj83k]
 
 # `MODEL_NAME`: choose from "sd15", "sd21", "sdxl", "paa", "pas", "sd3m", "sd35m", "sd35l"
 ```
 Captions will download automatically in `extensions/assets` and text embeddings are stored in `/tmp/{DATASET_NAME}_{MODEL_NAME}_prompt_embeds` by default.
 
+##### 3.1 DiffSplat (w/o rendering loss)
+Note that:
+- `opt.view_concat_condition=true opt.input_concat_binary_mask=true`: specified for image-conditioned generation.
+- `opt.prediction_type=v_prediction`: specified for image-conditioned generation. We use `v_prediction` for better image-conditioned performance.
+- `----val_guidance_scales 1 2 3` (default: `1 3 7.5`): smaller CFG scales for image conditioning.
+
+Set environment variables in `scripts/train.sh` first, then:
+```bash
+# SD1.5 (text-cond)
+bash scripts/train.sh src/train_gsdiff_sd.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15 --gradient_accumulation_steps 2 --use_ema
+# SD1.5 (image-cond)
+bash scripts/train.sh src/train_gsdiff_sd.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15 --gradient_accumulation_steps 2 --use_ema ----val_guidance_scales 1 2 3 opt.view_concat_condition=true opt.input_concat_binary_mask=true opt.prediction_type=v_prediction
+
+# PixArt-Sigma (text-cond)
+bash scripts/train.sh src/train_gsdiff_pas.py configs/gsdiff_pas.yaml gsdiff_gobj83k_pas_fp16 --gradient_accumulation_steps 2 --use_ema
+# PixArt-Sigma (image-cond)
+bash scripts/train.sh src/train_gsdiff_pas.py configs/gsdiff_pas.yaml gsdiff_gobj83k_pas_fp16 --gradient_accumulation_steps 2 --use_ema ----val_guidance_scales 1 2 3 opt.view_concat_condition=true opt.input_concat_binary_mask=true opt.prediction_type=v_prediction
+
+# SD3.5m (text-cond)
+bash scripts/train.sh src/train_gsdiff_sd3.py configs/gsdiff_sd35m_80g.yaml gsdiff_gobj83k_sd35m --gradient_accumulation_steps 8 --use_ema
+# SD3.5m (image-cond)
+bash scripts/train.sh src/train_gsdiff_sd3.py configs/gsdiff_sd35m_80g.yaml gsdiff_gobj83k_sd35m --gradient_accumulation_steps 8 --use_ema ----val_guidance_scales 1 2 3 opt.view_concat_condition=true opt.input_concat_binary_mask=true opt.prediction_type=v_prediction
+```
+
+##### 3.2 DiffSplat (w/ rendering loss)
+Note that:
+- `opt.rendering_loss_prob=1` (default `0`) means use rendering loss in the training stage all the time.
+- `opt.snr_gamma_rendering=1`: we use SNR (signal-noise ratio) weighted rendering loss (weight `gamma=1`) for PixArt-Sigma models for more robust training. Feel free to tune this weight for other models.
+- `opt.use_tiny_decoder=true`: use tiny decoder for efficient decoding/rendering in this stage.
+- `--load_pretrained_model` is used for loading pretrained DiffSplat models in the previous stage.
+
+Set environment variables in `scripts/train.sh` first, then:
+```bash
+# SD1.5 (text-cond)
+bash scripts/train.sh src/train_gsdiff_sd.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15__render --gradient_accumulation_steps 2 --use_ema opt.rendering_loss_prob=1 opt.use_tiny_decoder=true --load_pretrained_model gsdiff_gobj83k_sd15
+# SD1.5 (image-cond)
+bash scripts/train.sh src/train_gsdiff_sd.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15_image__render --gradient_accumulation_steps 2 --use_ema ----val_guidance_scales 1 2 3 opt.view_concat_condition=true opt.input_concat_binary_mask=true opt.prediction_type=v_prediction opt.rendering_loss_prob=1 opt.use_tiny_decoder=true --load_pretrained_model gsdiff_gobj83k_sd15
+
+# PixArt-Sigma (text-cond)
+bash scripts/train.sh src/train_gsdiff_pas.py configs/gsdiff_pas.yaml gsdiff_gobj83k_pas_fp16__render --gradient_accumulation_steps 2 --use_ema opt.rendering_loss_prob=1 opt.snr_gamma_rendering=1 opt.use_tiny_decoder=true --load_pretrained_model gsdiff_gobj83k_pas_fp16
+# PixArt-Sigma (image-cond)
+bash scripts/train.sh src/train_gsdiff_pas.py configs/gsdiff_pas.yaml gsdiff_gobj83k_pas_fp16_image__render --gradient_accumulation_steps 2 --use_ema ----val_guidance_scales 1 2 3 opt.view_concat_condition=true opt.input_concat_binary_mask=true opt.prediction_type=v_prediction opt.rendering_loss_prob=1 opt.snr_gamma_rendering=1 opt.use_tiny_decoder=true --load_pretrained_model gsdiff_gobj83k_pas_fp16
+
+# SD3.5m (text-cond)
+bash scripts/train.sh src/train_gsdiff_sd3.py configs/gsdiff_sd35m_80g.yaml gsdiff_gobj83k_sd35m__render --gradient_accumulation_steps 8 --use_ema opt.rendering_loss_prob=1 opt.use_tiny_decoder=true --load_pretrained_model gsdiff_gobj83k_sd35m
+# SD3.5m (image-cond)
+bash scripts/train.sh src/train_gsdiff_sd3.py configs/gsdiff_sd35m_80g.yaml gsdiff_gobj83k_sd35m_image__render --gradient_accumulation_steps 8 --use_ema ----val_guidance_scales 1 2 3 opt.view_concat_condition=true opt.input_concat_binary_mask=true opt.prediction_type=v_prediction opt.rendering_loss_prob=1 opt.use_tiny_decoder=true --load_pretrained_model gsdiff_gobj83k_sd35m
+```
+
 Please refer to [train_gsdiff_{sd, sdxl, paa, pas, sd3}.py](./src/train_gsdiff_sd.py) and options are specified in [configs/gsdiff_{sd, sdxl_80g, paa,pas, sd3m_80g, sd35m_80g}.yaml](./configs/gsdiff_sd15.yaml) and [options.py](./src/options.py) (`opt_dict["gsdiff_sd15"]`, `opt_dict["gsdiff_sdxl"]`, `opt_dict["gsdiff_paa"]`, `opt_dict["gsdiff_pas"]`, `opt_dict["gsdiff_sd3m"]` and `opt_dict["gsdiff_sd35m"]`).
 
-Instructions for `DiffSplat` training will be provided soon.
-If you have any questions or requirements about DiffSplat training, please open an issue to push me to do it 😄.
-
 #### 4. ControlNet
+Note that:
+- `opt.controlnet_type`: choose from `[normal, canny, depth]`.
+- `--load_pretrained_model` is used for loading pretrained DiffSplat models in the previous stage.
+
+Set environment variables in `scripts/train.sh` first, then:
+```bash
+# Normal ControlNet
+bash scripts/train.sh src/train_gsdiff_sd_controlnet.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15__render__normal --gradient_accumulation_steps 2 opt.controlnet_type=normal --load_pretrained_model gsdiff_gobj83k_sd15__render
+
+# Canny ControlNet
+bash scripts/train.sh src/train_gsdiff_sd_controlnet.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15__render__canny --gradient_accumulation_steps 2 opt.controlnet_type=canny --load_pretrained_model gsdiff_gobj83k_sd15__render
+
+# Depth ControlNet
+bash scripts/train.sh src/train_gsdiff_sd_controlnet.py configs/gsdiff_sd15.yaml gsdiff_gobj83k_sd15__render__depth --gradient_accumulation_steps 2 opt.controlnet_type=depth --load_pretrained_model gsdiff_gobj83k_sd15__render
+```
 
 Please refer to [train_gsdiff_{sd, sdxl}_controlnet.py](./src/train_gsdiff_sd_controlnet.py) and options are in [configs/gsdiff_{sd15, sdxl}_controlnet.yaml](./configs/gsdiff_sd15_controlnet.yaml) and [options.py](./src/options.py) (`opt_dict["gsdiff_sd15"]` and `opt_dict["gsdiff_sdxl"]`).
-
-Instructions for `ControlNet` training will be provided soon.
-If you have any questions or requirements about ControlNet training, please open an issue to push me to do it 😄.
 
 
 ## 😊 Acknowledgement
