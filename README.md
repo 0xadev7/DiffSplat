@@ -37,6 +37,12 @@ DiffSplat is a generative framework to synthesize 3D Gaussian Splats from text p
 Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have any questions or suggestions.
 
 
+## 🔥 See Also
+
+You may also be interested in our other works:
+- [**PartCrafter**](https://wgsxm.github.io/projects/partcrafter): a 3D-native DiT that can directly generate 3D objects in multiple parts.
+
+
 ## 📢 News
 
 - **2025-03-06**: Training instructions for DiffSplat and ControlNet are provided.
@@ -51,7 +57,6 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 - [x] Provide detailed instructions for inference.
 - [x] Provide detailed instructions for GSRecon & GSVAE training.
 - [x] Provide detailed instructions for DiffSplat training.
-- [ ] Implement a Gradio demo at HuggingFace🤗 Space.
 
 
 ## 🔧 Installation
