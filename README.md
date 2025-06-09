@@ -40,7 +40,7 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 ## 🔥 See Also
 
 You may also be interested in our other works:
-- [**PartCrafter**](https://wgsxm.github.io/projects/partcrafter): a 3D-native DiT that can directly generate 3D objects in multiple parts.
+- [**[arXiv 2506] PartCrafter**](https://wgsxm.github.io/projects/partcrafter): a 3D-native DiT that can directly generate 3D objects in multiple parts.
 
 
 ## 📢 News
