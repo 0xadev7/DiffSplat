@@ -110,9 +110,9 @@ class GaussianModel:
 
         # Invert activation to make it compatible with the original ply format
         if compatible:
-            opacity = kiui.op.inverse_sigmoid(opacity)
-            scales = torch.log(scales + 1e-8)
-            f_dc = (f_dc - 0.5) / 0.28209479177387814
+            opacity = kiui.op.inverse_sigmoid(torch.from_numpy(opacity)).numpy()
+            scale = torch.log(torch.from_numpy(scale) + 1e-8).numpy()
+            f_dc = (torch.from_numpy(f_dc) - 0.5).numpy() / 0.28209479177387814
 
         dtype_full = [(attribute, "f4") for attribute in self._construct_list_of_attributes()]
         dtype_full.extend([("red", "u1"), ("green", "u1"), ("blue", "u1")])
