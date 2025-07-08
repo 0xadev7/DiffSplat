@@ -5,6 +5,7 @@ import os
 import numpy as np
 from plyfile import PlyData, PlyElement
 import torch
+import kiui
 
 from diff_gaussian_rasterization import (
     GaussianRasterizationSettings,
@@ -88,7 +89,7 @@ class GaussianModel:
         self.opacity = self.opacity.to(device, dtype)
         return self
 
-    def save_ply(self, path: str, opacity_threshold: float = 0.):
+    def save_ply(self, path: str, opacity_threshold: float = 0., compatible: bool = True):
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
         xyz = self.xyz.detach().cpu().numpy()
@@ -107,6 +108,12 @@ class GaussianModel:
         rotation = rotation[mask]
         rgb = rgb[mask]
 
+        # Invert activation to make it compatible with the original ply format
+        if compatible:
+            opacity = kiui.op.inverse_sigmoid(opacity)
+            scales = torch.log(scales + 1e-8)
+            f_dc = (f_dc - 0.5) / 0.28209479177387814
+
         dtype_full = [(attribute, "f4") for attribute in self._construct_list_of_attributes()]
         dtype_full.extend([("red", "u1"), ("green", "u1"), ("blue", "u1")])
         elements = np.empty(xyz.shape[0], dtype=dtype_full)
@@ -115,7 +122,7 @@ class GaussianModel:
         el = PlyElement.describe(elements, "vertex")
         PlyData([el]).write(path)
 
-    def load_ply(self, path: str):
+    def load_ply(self, path: str, compatible: bool = True):
         plydata = PlyData.read(path)
 
         xyz = np.stack((
@@ -146,6 +153,11 @@ class GaussianModel:
         self.opacity = torch.from_numpy(opacity).float()
         self.scale = torch.from_numpy(scale).float()
         self.rotation = torch.from_numpy(rotation).float()
+
+        if compatible:
+            self.opacity = torch.sigmoid(self.opacity)
+            self.scale = torch.exp(self.scale)
+            self.rgb = 0.28209479177387814 * self.rgb + 0.5
 
     def _construct_list_of_attributes(self):
         l = ["x", "y", "z"]
