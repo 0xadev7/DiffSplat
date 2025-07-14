@@ -66,7 +66,7 @@ There are not restrictions on the `torch` version, feel free to use your preferr
 ```bash
 git clone https://github.com/chenguolin/DiffSplat.git
 cd DiffSplat
-bash settings/setup.
+bash settings/setup.sh
 ```
 
 
