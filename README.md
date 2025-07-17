@@ -40,6 +40,7 @@ Feel free to contact me (chenguolin@stu.pku.edu.cn) or open an issue if you have
 ## 🔥 See Also
 
 You may also be interested in our other works:
+- [**[arXiv 2507] MoVieS**](https://github.com/chenguolin/MoVieS): a feed-forward model for dynamic Gaussian splatting reconstruction from monocular videos.
 - [**[arXiv 2506] PartCrafter**](https://github.com/wgsxm/PartCrafter): a 3D-native DiT that can directly generate 3D objects in multiple parts.
 
 
