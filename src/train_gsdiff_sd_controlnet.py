@@ -577,7 +577,7 @@ def main():
         args.load_pretrained_model_ckpt = util.load_ckpt(
             os.path.join(args.output_dir, args.load_pretrained_model, "checkpoints"),
             args.load_pretrained_model_ckpt,
-            None if args.hdfs_dir is None else os.path.join(args.project_hdfs_dir, args.load_pretrained_model_ckpt),
+            None if args.hdfs_dir is None else os.path.join(args.project_hdfs_dir, args.load_pretrained_model),
             None,  # `None`: not load model ckpt here
             accelerator,  # manage the process states
         )
