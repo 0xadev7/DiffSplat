@@ -23,6 +23,7 @@ image-reward
 git+https://github.com/openai/CLIP.git
 deepspeed
 hf_transfer
+wandb
 
 # FastAPI server (endpoints, forms, streaming)
 fastapi>=0.115

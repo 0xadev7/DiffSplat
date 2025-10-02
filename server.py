@@ -45,7 +45,7 @@ def get_args():
     # DiffSplat runtime config (maps to infer_gsdiff_sd3.py expectations)
     p.add_argument("--config_file", type=str, default="configs/gsdiff_sd35m_80g.yaml")
     p.add_argument("--output_dir", type=str, default="out")
-    p.add_argument("--tag", type=str, default=None)
+    p.add_argument("--tag", type=str, default="gsdiff_gobj83k_sd35m__render")
     p.add_argument("--gpu_id", type=int, default=0)
     p.add_argument("--infer_from_iter", type=int, default=-1)
 
