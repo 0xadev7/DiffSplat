@@ -10,7 +10,7 @@ pip install --extra-index-url https://download.pytorch.org/whl/cu124 \
 
 # A modified gaussian splatting (+ alpha, depth, normal rendering)
 cd extensions && git clone https://github.com/BaowenZ/RaDe-GS.git --recursive && cd RaDe-GS/submodules
-pip3 install ./diff-gaussian-rasterization
+pip3 install ./diff-gaussian-rasterization --no-build-isolation
 cd ${PROJECT_DIR}
 
 # Others

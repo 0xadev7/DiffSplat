@@ -22,3 +22,9 @@ pandas
 image-reward
 git+https://github.com/openai/CLIP.git
 deepspeed
+hf_transfer
+
+# FastAPI server (endpoints, forms, streaming)
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9   # FastAPI needs this to parse form fields/files
