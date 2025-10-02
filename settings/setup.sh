@@ -1,8 +1,8 @@
 PROJECT_DIR=$(pwd)
 
 # Pytorch
-pip3 install -i https://download.pytorch.org/whl/cu124 -U torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1
-pip3 install -i https://download.pytorch.org/whl/cu124 -U xformers==0.0.27
+pip3 install -i https://download.pytorch.org/whl/cu124 -U torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1
+pip3 install -i https://download.pytorch.org/whl/cu124 -U xformers==0.0.29.post3
 
 # A modified gaussian splatting (+ alpha, depth, normal rendering)
 cd extensions && git clone https://github.com/BaowenZ/RaDe-GS.git --recursive && cd RaDe-GS/submodules
