@@ -122,6 +122,37 @@ class GaussianModel:
         el = PlyElement.describe(elements, "vertex")
         PlyData([el]).write(path)
 
+    def save_ply_buffer(self, buffer, opacity_threshold: float = 0., compatible: bool = True):
+        xyz = self.xyz.detach().cpu().numpy()
+        f_dc = self.rgb.detach().cpu().numpy()
+        rgb = (f_dc * 255.).clip(0., 255.).astype(np.uint8)
+        opacity = self.opacity.detach().cpu().numpy()
+        scale = self.scale.detach().cpu().numpy()
+        rotation = self.rotation.detach().cpu().numpy()
+
+        # Filter out points with low opacity
+        mask = (opacity > opacity_threshold).squeeze()
+        xyz = xyz[mask]
+        f_dc = f_dc[mask]
+        opacity = opacity[mask]
+        scale = scale[mask]
+        rotation = rotation[mask]
+        rgb = rgb[mask]
+
+        # Invert activation to make it compatible with the original ply format
+        if compatible:
+            opacity = kiui.op.inverse_sigmoid(torch.from_numpy(opacity)).numpy()
+            scale = torch.log(torch.from_numpy(scale) + 1e-8).numpy()
+            f_dc = (torch.from_numpy(f_dc) - 0.5).numpy() / 0.28209479177387814
+
+        dtype_full = [(attribute, "f4") for attribute in self._construct_list_of_attributes()]
+        dtype_full.extend([("red", "u1"), ("green", "u1"), ("blue", "u1")])
+        elements = np.empty(xyz.shape[0], dtype=dtype_full)
+        attributes = np.concatenate((xyz, f_dc, opacity, scale, rotation, rgb), axis=1)
+        elements[:] = list(map(tuple, attributes))
+        el = PlyElement.describe(elements, "vertex")
+        PlyData([el]).write(buffer)
+
     def load_ply(self, path: str, compatible: bool = True):
         plydata = PlyData.read(path)
 

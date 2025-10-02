@@ -310,7 +310,7 @@ class DiffSplatState:
         render = self._decode_render(latents, render_res=self.opt.input_res, opacity_threshold=0.01)
         pc = render["pc"][0]
         buf = io.BytesIO()
-        pc.save_ply(buf, opacity_threshold=0.01)
+        pc.save_ply_buffer(buf, opacity_threshold=0.01)
         buf.seek(0)
         t1 = time()
         logger.info(f"[/generate] prompt='{prompt}' done in {t1 - t0:.2f}s")
