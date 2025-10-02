@@ -5,7 +5,7 @@ import os
 import numpy as np
 from plyfile import PlyData, PlyElement
 import torch
-import kiui
+from kiui.op import inverse_sigmoid
 
 from diff_gaussian_rasterization import (
     GaussianRasterizationSettings,
@@ -110,7 +110,7 @@ class GaussianModel:
 
         # Invert activation to make it compatible with the original ply format
         if compatible:
-            opacity = kiui.op.inverse_sigmoid(torch.from_numpy(opacity)).numpy()
+            opacity = inverse_sigmoid(torch.from_numpy(opacity)).numpy()
             scale = torch.log(torch.from_numpy(scale) + 1e-8).numpy()
             f_dc = (torch.from_numpy(f_dc) - 0.5).numpy() / 0.28209479177387814
 
@@ -141,7 +141,7 @@ class GaussianModel:
 
         # Invert activation to make it compatible with the original ply format
         if compatible:
-            opacity = kiui.op.inverse_sigmoid(torch.from_numpy(opacity)).numpy()
+            opacity = inverse_sigmoid(torch.from_numpy(opacity)).numpy()
             scale = torch.log(torch.from_numpy(scale) + 1e-8).numpy()
             f_dc = (torch.from_numpy(f_dc) - 0.5).numpy() / 0.28209479177387814
 
