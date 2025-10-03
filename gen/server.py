@@ -97,7 +97,6 @@ async def generate_and_validate(
             status_code=502,
             content={
                 "prompt": prompt,
-                "ply_base64": ply_b64,
                 "gen": {"score": gen_score, "attempts": attempts, "elapsed_s": elapsed},
                 "validation_error": str(e),
             },
@@ -107,7 +106,6 @@ async def generate_and_validate(
     return JSONResponse(
         content={
             "prompt": prompt,
-            "ply_base64": ply_b64,
             "gen": {"score": gen_score, "attempts": attempts, "elapsed_s": elapsed},
             "validation": validator_json,
         }

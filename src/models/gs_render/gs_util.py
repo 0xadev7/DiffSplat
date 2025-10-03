@@ -122,34 +122,93 @@ class GaussianModel:
         el = PlyElement.describe(elements, "vertex")
         PlyData([el]).write(path)
 
-    def save_ply_buffer(self, buffer, opacity_threshold: float = 0., compatible: bool = True):
-        xyz = self.xyz.detach().cpu().numpy()
-        f_dc = self.rgb.detach().cpu().numpy()
-        rgb = (f_dc * 255.).clip(0., 255.).astype(np.uint8)
-        opacity = self.opacity.detach().cpu().numpy()
-        scale = self.scale.detach().cpu().numpy()
-        rotation = self.rotation.detach().cpu().numpy()
+    def save_ply_buffer(self, buffer, opacity_threshold: float = 0.0, compatible: bool = True):
+        import numpy as np
+        import torch
+        from plyfile import PlyData, PlyElement  # assuming you're using plyfile
 
-        # Filter out points with low opacity
-        mask = (opacity > opacity_threshold).squeeze()
+        # Pull tensors to CPU numpy
+        xyz = self.xyz.detach().cpu().numpy()                # (N, 3)
+        f_dc = self.rgb.detach().cpu().numpy()               # (N, 3) in [0,1] pre-conversion
+        opacity = self.opacity.detach().cpu().numpy()        # (N, 1) or (N,)
+        scale = self.scale.detach().cpu().numpy()            # (N, 3)
+        rotation = self.rotation.detach().cpu().numpy()      # (N, 4)
+
+        # Ensure shapes are (N,) for singletons
+        if opacity.ndim == 2 and opacity.shape[1] == 1:
+            opacity = opacity[:, 0]
+
+        # Filter out low-opacity points before any inversion
+        mask = (opacity > opacity_threshold)
         xyz = xyz[mask]
         f_dc = f_dc[mask]
         opacity = opacity[mask]
         scale = scale[mask]
         rotation = rotation[mask]
-        rgb = rgb[mask]
 
-        # Invert activation to make it compatible with the original ply format
+        # 8-bit preview color (optional, last)
+        rgb8 = (f_dc * 255.0).clip(0.0, 255.0).astype(np.uint8)
+
+        # Invert activations to make it compatible with the loader expectations
+        # Loader does: sigmoid(opacity), exp(scale), mean+sh_c0 * f_dc
         if compatible:
-            opacity = inverse_sigmoid(torch.from_numpy(opacity)).numpy()
-            scale = torch.log(torch.from_numpy(scale) + 1e-8).numpy()
-            f_dc = (torch.from_numpy(f_dc) - 0.5).numpy() / 0.28209479177387814
+            # Safely invert sigmoid: logit with eps to avoid infs for 0/1
+            opacity_t = torch.from_numpy(opacity).float()
+            opacity_logit = torch.logit(opacity_t.clamp(1e-6, 1.0 - 1e-6), eps=1e-6)
+            opacity = opacity_logit.numpy().astype(np.float32)
 
-        dtype_full = [(attribute, "f4") for attribute in self._construct_list_of_attributes()]
-        dtype_full.extend([("red", "u1"), ("green", "u1"), ("blue", "u1")])
-        elements = np.empty(xyz.shape[0], dtype=dtype_full)
-        attributes = np.concatenate((xyz, f_dc, opacity, scale, rotation, rgb), axis=1)
-        elements[:] = list(map(tuple, attributes))
+            # Safely log the scales
+            scale_t = torch.from_numpy(scale).float()
+            scale = torch.log(scale_t + 1e-8).numpy().astype(np.float32)
+
+            # Match loader's SH DC conversion:
+            # loader does: mean + sh_c0 * pdata["f_dc_i"]
+            # so here we must store the de-meaned/de-scaled value:
+            f_dc_t = torch.from_numpy(f_dc).float()
+            f_dc = ((f_dc_t - 0.5) / 0.28209479177387814).numpy().astype(np.float32)
+        else:
+            # If not compatible, just ensure float32
+            opacity = opacity.astype(np.float32)
+            scale = scale.astype(np.float32)
+            f_dc = f_dc.astype(np.float32)
+
+        # Build dtype with explicit names/order matching the loader
+        dtype_list = [
+            ("x", "f4"), ("y", "f4"), ("z", "f4"),
+            ("f_dc_0", "f4"), ("f_dc_1", "f4"), ("f_dc_2", "f4"),
+            ("opacity", "f4"),
+            ("scale_0", "f4"), ("scale_1", "f4"), ("scale_2", "f4"),
+            ("rot_0", "f4"), ("rot_1", "f4"), ("rot_2", "f4"), ("rot_3", "f4"),
+            ("red", "u1"), ("green", "u1"), ("blue", "u1"),
+        ]
+
+        N = xyz.shape[0]
+        elements = np.empty(N, dtype=dtype_list)
+
+        # Assign by named fields to avoid ordering bugs
+        elements["x"] = xyz[:, 0].astype(np.float32)
+        elements["y"] = xyz[:, 1].astype(np.float32)
+        elements["z"] = xyz[:, 2].astype(np.float32)
+
+        elements["f_dc_0"] = f_dc[:, 0]
+        elements["f_dc_1"] = f_dc[:, 1]
+        elements["f_dc_2"] = f_dc[:, 2]
+
+        elements["opacity"] = opacity
+
+        elements["scale_0"] = scale[:, 0]
+        elements["scale_1"] = scale[:, 1]
+        elements["scale_2"] = scale[:, 2]
+
+        elements["rot_0"] = rotation[:, 0].astype(np.float32)
+        elements["rot_1"] = rotation[:, 1].astype(np.float32)
+        elements["rot_2"] = rotation[:, 2].astype(np.float32)
+        elements["rot_3"] = rotation[:, 3].astype(np.float32)
+
+        elements["red"]   = rgb8[:, 0]
+        elements["green"] = rgb8[:, 1]
+        elements["blue"]  = rgb8[:, 2]
+
         el = PlyElement.describe(elements, "vertex")
         PlyData([el]).write(buffer)
 
