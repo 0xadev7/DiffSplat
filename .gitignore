@@ -9,3 +9,4 @@ download/*.csv
 temp*.*
 *.tar*
 *.vsix
+.env
