@@ -61,9 +61,9 @@ def get_args():
     p.add_argument("--port", type=int, default=10006)
 
     # DiffSplat runtime config
-    p.add_argument("--config_file", type=str, default="configs/sd3_text.yaml")
+    p.add_argument("--config_file", type=str, default="configs/gsdiff_sd35m_80g.yaml")
     p.add_argument("--output_dir", type=str, default="out")
-    p.add_argument("--tag", type=str, default=None)
+    p.add_argument("--tag", type=str, default="gsdiff_gobj83k_sd35m__render")
     p.add_argument("--gpu_id", type=int, default=0)
     p.add_argument("--infer_from_iter", type=int, default=-1)
 
