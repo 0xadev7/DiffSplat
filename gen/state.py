@@ -265,7 +265,7 @@ class DiffSplatState:
             attempts += 1
             t0 = time()
             lat = self._run_latents(prompt, steps=steps, guidance=guidance, seed=seed)
-            render = self._decode_gs(lat, render_res=self.opt.input_res)
+            render = self._decode_gs(lat, render_res=self.opt.input_res, opacity_threshold=0)
             pil_list = self._views_to_pils(render, self.cfg.vld_sample_views)
             score = self.validator.score(prompt, pil_list) if self.validator.enabled else 1.0
             logger.info(f"[attempt {attempts}] CLIP={score:.3f} (steps={steps}, gs={guidance}, seed={seed})")
