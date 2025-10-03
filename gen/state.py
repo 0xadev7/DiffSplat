@@ -272,7 +272,7 @@ class DiffSplatState:
 
             pc = render["pc"][0]
             buf = io.BytesIO()
-            pc.save_ply_buffer(buf)
+            pc.save_ply_buffer_sn17(buf)
             buf.seek(0)
             ply_bytes = buf.getvalue()
 

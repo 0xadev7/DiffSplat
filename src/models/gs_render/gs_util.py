@@ -12,6 +12,7 @@ from diff_gaussian_rasterization import (
     GaussianRasterizer,
 )
 
+SH_C0 = 0.28209479177387814
 
 class Camera:
     def __init__(self,
@@ -64,6 +65,7 @@ class Camera:
 
 
 class GaussianModel:
+    
     def __init__(self):
         self.xyz = None
         self.rgb = None
@@ -72,6 +74,25 @@ class GaussianModel:
         self.opacity = None
 
         self.sh_degree = 0
+
+    def _attributes_like_second(self, num_rest: int) -> list[tuple[str, str]]:
+        # Build dtype list exactly like the Second model
+        dtype_list = [
+            ("x", "f4"), ("y", "f4"), ("z", "f4"),
+            ("nx", "f4"), ("ny", "f4"), ("nz", "f4"),
+            ("f_dc_0", "f4"), ("f_dc_1", "f4"), ("f_dc_2", "f4"),
+        ]
+        for i in range(num_rest):
+            dtype_list.append((f"f_rest_{i}", "f4"))
+        dtype_list.append(("opacity", "f4"))
+        dtype_list.extend([("scale_0", "f4"), ("scale_1", "f4"), ("scale_2", "f4")])
+        dtype_list.extend([("rot_0", "f4"), ("rot_1", "f4"), ("rot_2", "f4"), ("rot_3", "f4")])
+        return dtype_list
+
+    def _num_f_rest(self) -> int:
+        # Match the Second model layout
+        L = (self.sh_degree + 1) ** 2
+        return 3 * max(L - 1, 0)  # 3 channels for all non-DC SH coeffs
 
     def set_data(self, xyz: Tensor, rgb: Tensor, scale: Tensor, rotation: Tensor, opacity: Tensor):
         self.xyz = xyz
@@ -153,6 +174,96 @@ class GaussianModel:
         el = PlyElement.describe(elements, "vertex")
         PlyData([el]).write(buffer)
 
+    def save_ply_buffer_sn17(self, buffer, opacity_threshold: float = 0.0):
+        """
+        Write a PLY identical in schema & value conventions to the Second model.
+        `target` can be a file path (str/Path) or an open binary file-like object.
+        """
+        import numpy as np
+        import torch
+        from plyfile import PlyData, PlyElement
+
+        # Pull tensors
+        xyz = self.xyz.detach().cpu().numpy()            # (N, 3)
+        rgb = self.rgb.detach().cpu().numpy()            # (N, 3) assumed colors_precomp in [0,1]
+        opacity = self.opacity.detach().cpu().numpy()    # (N, 1) or (N,)
+        scale = self.scale.detach().cpu().numpy()        # (N, 3) linear domain
+        rotation = self.rotation.detach().cpu().numpy()  # (N, 4)
+
+        # Flatten opacity shape
+        if opacity.ndim == 2 and opacity.shape[1] == 1:
+            opacity = opacity[:, 0]
+
+        # Apply mask BEFORE inversions (threshold in [0,1] domain)
+        mask = (opacity > opacity_threshold)
+        xyz = xyz[mask]
+        rgb = rgb[mask]
+        opacity = opacity[mask]
+        scale = scale[mask]
+        rotation = rotation[mask]
+
+        N = xyz.shape[0]
+        if N == 0:
+            raise ValueError("All points were filtered out by opacity_threshold.")
+
+        # Normals (zeros) to match the Second model
+        normals = np.zeros_like(xyz, dtype=np.float32)   # (N, 3)
+
+        # ---- Value space conversions to match Second model ----
+        # f_dc from baked RGB (colors_precomp): rgb = SH_C0 * f_dc + 0.5
+        f_dc = ((torch.from_numpy(rgb).float() - 0.5) / SH_C0).numpy().astype(np.float32)  # (N, 3)
+
+        # f_rest: emit zeros with correct width (3*((L^2)-1))
+        num_rest = self._num_f_rest()
+        if num_rest > 0:
+            f_rest = np.zeros((N, num_rest), dtype=np.float32)
+        else:
+            f_rest = np.zeros((N, 0), dtype=np.float32)
+
+        # opacity as *logit* (pre-sigmoid)
+        op_logits = torch.logit(torch.from_numpy(opacity).float().clamp(1e-6, 1-1e-6), eps=1e-6)
+        op_logits = op_logits.numpy().astype(np.float32)  # (N,)
+
+        # scale as *log* (pre-exp)
+        scale_log = torch.log(torch.from_numpy(scale).float() + 1e-8).numpy().astype(np.float32)  # (N,3)
+
+        rot32 = rotation.astype(np.float32)  # (N,4)
+
+        # ---- Structured array with exact schema/order ----
+        dtype_list = self._attributes_like_second(num_rest)
+        elements = np.empty(N, dtype=dtype_list)
+
+        elements["x"]  = xyz[:, 0].astype(np.float32)
+        elements["y"]  = xyz[:, 1].astype(np.float32)
+        elements["z"]  = xyz[:, 2].astype(np.float32)
+        elements["nx"] = normals[:, 0]
+        elements["ny"] = normals[:, 1]
+        elements["nz"] = normals[:, 2]
+
+        elements["f_dc_0"] = f_dc[:, 0]
+        elements["f_dc_1"] = f_dc[:, 1]
+        elements["f_dc_2"] = f_dc[:, 2]
+
+        # Fill f_rest_* if present
+        if num_rest > 0:
+            # contiguous block assign via view
+            for i in range(num_rest):
+                elements[f"f_rest_{i}"] = f_rest[:, i]
+
+        elements["opacity"] = op_logits
+        elements["scale_0"] = scale_log[:, 0]
+        elements["scale_1"] = scale_log[:, 1]
+        elements["scale_2"] = scale_log[:, 2]
+
+        elements["rot_0"] = rot32[:, 0]
+        elements["rot_1"] = rot32[:, 1]
+        elements["rot_2"] = rot32[:, 2]
+        elements["rot_3"] = rot32[:, 3]
+
+        el = PlyElement.describe(elements, "vertex")
+
+        PlyData([el]).write(buffer)
+            
     def load_ply(self, path: str, compatible: bool = True):
         plydata = PlyData.read(path)
 
