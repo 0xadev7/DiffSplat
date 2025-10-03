@@ -71,7 +71,7 @@ async def generate_and_validate(
     elapsed = time() - t0
 
     # 2) Base64 encode for JSON transport
-    ply_b64 = base64.b64encode(ply_bytes)
+    ply_b64 = base64.b64encode(ply_bytes).decode("ascii")
 
     # 3) Call validator
     payload = {
