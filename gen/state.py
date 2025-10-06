@@ -369,19 +369,22 @@ class DiffSplatState:
         pc.save_ply_buffer_sn17(buf)
         buf.seek(0)
 
+        raw_bytes = buf.getvalue()
+
         try:
+            # Derive fov/scale from your intrinsics via fxfy
+            fxfy = float(self.opt.fxfy)
             clean_bytes = hygiene_ply_bytes(
-                buf.getvalue(),
-                from_up="z",  # most generators are Z-up; set "y" if yours already is Y-up
-                R=1.4,  # validator camera radius
-                fov_deg=49.0,  # adjust if you know exact vertical FOV used downstream
-                k=0.70,  # target ~70% frame occupancy
-                # extra_rx=0.0, extra_ry=0.0, extra_rz=0.0  # optional pose tweak
+                raw_bytes,
+                from_up=None,  # auto-detect; or force "y" if you know it's Y-up
+                fxfy=fxfy,  # <- IMPORTANT: matches your renderer
+                target_occ=0.70,  # try 0.65–0.80 per class
+                occ_mode="maxdim",
+                scale_clamp=(0.7, 1.4),  # conservative first; widen after testing
             )
         except Exception as e:
-            # fall back gracefully if hygiene fails
-            logger.warning(f"PLY hygiene failed: {e}")
-            clean_bytes = buf.getvalue()
+            logger.warning(f"PLY hygiene (safe) failed: {e}")
+            clean_bytes = raw_bytes
 
         return clean_bytes, best_score, attempts
 
