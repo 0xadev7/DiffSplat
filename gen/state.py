@@ -66,19 +66,31 @@ class DiffSplatState:
             logger.info("TF32 enabled")
 
         # Tokenizers / Encoders / VAE
-        tok = CLIPTokenizer.from_pretrained(opt.pretrained_model_name_or_path, subfolder="tokenizer")
+        tok = CLIPTokenizer.from_pretrained(
+            opt.pretrained_model_name_or_path, subfolder="tokenizer"
+        )
         te = CLIPTextModelWithProjection.from_pretrained(
             opt.pretrained_model_name_or_path, subfolder="text_encoder", variant="fp16"
         )
-        tok2 = CLIPTokenizer.from_pretrained(opt.pretrained_model_name_or_path, subfolder="tokenizer_2")
+        tok2 = CLIPTokenizer.from_pretrained(
+            opt.pretrained_model_name_or_path, subfolder="tokenizer_2"
+        )
         te2 = CLIPTextModelWithProjection.from_pretrained(
-            opt.pretrained_model_name_or_path, subfolder="text_encoder_2", variant="fp16"
+            opt.pretrained_model_name_or_path,
+            subfolder="text_encoder_2",
+            variant="fp16",
         )
-        tok3 = T5TokenizerFast.from_pretrained(opt.pretrained_model_name_or_path, subfolder="tokenizer_3")
+        tok3 = T5TokenizerFast.from_pretrained(
+            opt.pretrained_model_name_or_path, subfolder="tokenizer_3"
+        )
         te3 = T5EncoderModel.from_pretrained(
-            opt.pretrained_model_name_or_path, subfolder="text_encoder_3", variant="fp16"
+            opt.pretrained_model_name_or_path,
+            subfolder="text_encoder_3",
+            variant="fp16",
         )
-        vae = AutoencoderKL.from_pretrained(opt.pretrained_model_name_or_path, subfolder="vae")
+        vae = AutoencoderKL.from_pretrained(
+            opt.pretrained_model_name_or_path, subfolder="vae"
+        )
 
         gsvae = GSAutoencoderKL(opt)
         gsrecon = GSRecon(opt)
@@ -103,7 +115,9 @@ class DiffSplatState:
         infer_iter = util.load_ckpt(self.ckpt_dir, cfg.infer_from_iter, None, None)
         self.infer_iter = infer_iter
         ckpt_path = os.path.join(self.ckpt_dir, f"{infer_iter:06d}")
-        os.system(f"python3 extensions/merge_safetensors.py {ckpt_path}/transformer_ema")
+        os.system(
+            f"python3 extensions/merge_safetensors.py {ckpt_path}/transformer_ema"
+        )
 
         in_channels = (
             16
@@ -169,10 +183,18 @@ class DiffSplatState:
 
         # Canonical 4-view rig
         self.V_in = self.opt.num_input_views
-        fxfycxcy = torch.tensor([self.opt.fxfy, self.opt.fxfy, 0.5, 0.5], device=self.device).float()
+        fxfycxcy = torch.tensor(
+            [self.opt.fxfy, self.opt.fxfy, 0.5, 0.5], device=self.device
+        ).float()
         elevation = 10.0
-        elevations = torch.tensor([-elevation] * 4, device=self.device).deg2rad().float()
-        azimuths = torch.tensor([0.0, 90.0, 180.0, 270.0], device=self.device).deg2rad().float()
+        elevations = (
+            torch.tensor([-elevation] * 4, device=self.device).deg2rad().float()
+        )
+        azimuths = (
+            torch.tensor([0.0, 90.0, 180.0, 270.0], device=self.device)
+            .deg2rad()
+            .float()
+        )
         radius = torch.tensor([1.4] * 4, device=self.device).float()
         input_C2W = geo_util.orbit_camera(elevations, azimuths, radius, is_degree=False)
         input_C2W[:, :3, 1:3] *= -1
@@ -198,9 +220,17 @@ class DiffSplatState:
 
     # ---------------- Core ----------------
     @torch.no_grad()
-    def _run_latents(self, prompt: str, steps: int, guidance: float, seed: Optional[int]) -> torch.Tensor:
-        gen = torch.Generator(device=self.device).manual_seed(seed) if seed is not None else None
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=self.cfg.half_precision):
+    def _run_latents(
+        self, prompt: str, steps: int, guidance: float, seed: Optional[int]
+    ) -> torch.Tensor:
+        gen = (
+            torch.Generator(device=self.device).manual_seed(seed)
+            if seed is not None
+            else None
+        )
+        with torch.autocast(
+            device_type="cuda", dtype=torch.bfloat16, enabled=self.cfg.half_precision
+        ):
             out = self.pipeline(
                 image=None,
                 prompt=prompt,
@@ -225,7 +255,12 @@ class DiffSplatState:
         return out
 
     @torch.no_grad()
-    def _decode_gs(self, latents: torch.Tensor, render_res: Optional[int] = None, opacity_threshold: float = 0.01):
+    def _decode_gs(
+        self,
+        latents: torch.Tensor,
+        render_res: Optional[int] = None,
+        opacity_threshold: float = 0.01,
+    ):
         latents = latents / self.gsvae.scaling_factor + self.gsvae.shift_factor
         return self.gsvae.decode_and_render_gslatents(
             self.gsrecon,
@@ -263,11 +298,19 @@ class DiffSplatState:
             cur_guidance = max(min(guidance + attempt * 0.5, 8.0), 7.0)
             cur_seed = None if seed < 0 else seed + 1337 * attempt
 
-            lat = self._run_latents(prompt, steps=cur_steps, guidance=cur_guidance, seed=cur_seed)
-            render = self._decode_gs(lat, render_res=self.opt.input_res, opacity_threshold=0)
+            lat = self._run_latents(
+                prompt, steps=cur_steps, guidance=cur_guidance, seed=cur_seed
+            )
+            render = self._decode_gs(
+                lat, render_res=self.opt.input_res, opacity_threshold=0
+            )
             pil_list = self._views_to_pils(render, self.cfg.vld_sample_views)
 
-            score = self.validator.score(prompt, pil_list) if self.validator.enabled else 1.0
+            score = (
+                self.validator.score(prompt, pil_list)
+                if self.validator.enabled
+                else 1.0
+            )
             logger.info(
                 f"[attempt {attempts}] CLIP={score:.3f} (steps={cur_steps}, gs={cur_guidance}, seed={cur_seed})"
             )
@@ -282,14 +325,19 @@ class DiffSplatState:
                 best_score, best_bytes = score, ply_bytes
 
             if self.validator.passes(score):
-                logger.info(f"Validation PASSED in {time()-t0:.2f}s (attempt {attempts})")
+                logger.info(
+                    f"Validation PASSED in {time()-t0:.2f}s (attempt {attempts})"
+                )
                 return ply_bytes, score, attempts
 
-        logger.warning(f"Validation FAILED after {attempts} attempts; best={best_score:.3f}")
+        logger.warning(
+            f"Validation FAILED after {attempts} attempts; best={best_score:.3f}"
+        )
         return best_bytes, best_score, attempts
 
-
-    def generate_orbit_mp4_validated(self, prompt: str, res: int = 1088) -> tuple[io.BytesIO, float, int]:
+    def generate_orbit_mp4_validated(
+        self, prompt: str, res: int = 1088
+    ) -> tuple[io.BytesIO, float, int]:
         """Generate and validate orbit video with retry support using vld_max_retries."""
         best_buf, best_score = io.BytesIO(), -1.0
         attempts = 0
@@ -301,7 +349,9 @@ class DiffSplatState:
         val_azis = [0.0, 120.0, 240.0][: max(1, self.cfg.vld_sample_views)]
         full_azis = np.arange(0.0, 360.0, 2.0)
 
-        fxfycxcy = torch.tensor([self.opt.fxfy, self.opt.fxfy, 0.5, 0.5], device=self.device).float()
+        fxfycxcy = torch.tensor(
+            [self.opt.fxfy, self.opt.fxfy, 0.5, 0.5], device=self.device
+        ).float()
         elevation = 10.0
         radius_val = 1.4
 
@@ -313,7 +363,9 @@ class DiffSplatState:
             cur_guidance = max(min(guidance + attempt * 0.5, 8.0), 7.0)
             cur_seed = None if seed < 0 else seed + 7331 * attempt
 
-            lat = self._run_latents(prompt, steps=cur_steps, guidance=cur_guidance, seed=cur_seed)
+            lat = self._run_latents(
+                prompt, steps=cur_steps, guidance=cur_guidance, seed=cur_seed
+            )
 
             # quick validation frames
             val_pils: List[Image.Image] = []
@@ -321,7 +373,9 @@ class DiffSplatState:
                 elev_t = torch.tensor([-elevation], device=self.device)
                 azim_t = torch.tensor([float(azi)], device=self.device)
                 rad_t = torch.tensor([radius_val], device=self.device)
-                c2w = geo_util.orbit_camera(elev_t, azim_t, radius=rad_t, opengl=True).squeeze(0)
+                c2w = geo_util.orbit_camera(
+                    elev_t, azim_t, radius=rad_t, opengl=True
+                ).squeeze(0)
                 c2w[:3, 1:3] *= -1
 
                 render = self.gsvae.decode_and_render_gslatents(
@@ -338,7 +392,11 @@ class DiffSplatState:
                 img = render["image"].squeeze(0).squeeze(0)
                 val_pils.append(vis_util.tensor_to_image(img, return_pil=True))
 
-            score = self.validator.score(prompt, val_pils) if self.validator.enabled else 1.0
+            score = (
+                self.validator.score(prompt, val_pils)
+                if self.validator.enabled
+                else 1.0
+            )
             logger.info(
                 f"[video attempt {attempts}] CLIP={score:.3f} (steps={cur_steps}, gs={cur_guidance}, seed={cur_seed})"
             )
@@ -349,7 +407,9 @@ class DiffSplatState:
                     elev_t = torch.tensor([-elevation], device=self.device)
                     azim_t = torch.tensor([float(azi)], device=self.device)
                     rad_t = torch.tensor([radius_val], device=self.device)
-                    c2w = geo_util.orbit_camera(elev_t, azim_t, radius=rad_t, opengl=True).squeeze(0)
+                    c2w = geo_util.orbit_camera(
+                        elev_t, azim_t, radius=rad_t, opengl=True
+                    ).squeeze(0)
                     c2w[:3, 1:3] *= -1
 
                     render = self.gsvae.decode_and_render_gslatents(
@@ -367,7 +427,9 @@ class DiffSplatState:
                     frames.append(vis_util.tensor_to_image(img))
 
                 mp4_buf = io.BytesIO()
-                imageio.mimwrite(mp4_buf, np.stack(frames, axis=0), fps=30, format="mp4")
+                imageio.mimwrite(
+                    mp4_buf, np.stack(frames, axis=0), fps=30, format="mp4"
+                )
                 mp4_buf.seek(0)
                 logger.info(f"Video render after validation took {time()-t0:.2f}s")
                 return mp4_buf, score, attempts
@@ -376,6 +438,8 @@ class DiffSplatState:
                 best_score = score
                 best_buf = io.BytesIO()
 
-        logger.warning(f"Video validation FAILED after {attempts} attempts; best={best_score:.3f}")
+        logger.warning(
+            f"Video validation FAILED after {attempts} attempts; best={best_score:.3f}"
+        )
         best_buf.seek(0)
         return best_buf, best_score, attempts
