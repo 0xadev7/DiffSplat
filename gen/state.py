@@ -370,21 +370,22 @@ class DiffSplatState:
         buf.seek(0)
 
         raw_bytes = buf.getvalue()
+        clean_bytes = raw_bytes
 
-        try:
-            # Derive fov/scale from your intrinsics via fxfy
-            fxfy = float(self.opt.fxfy)
-            clean_bytes = hygiene_ply_bytes(
-                raw_bytes,
-                from_up=None,  # auto-detect; or force "y" if you know it's Y-up
-                fxfy=fxfy,  # <- IMPORTANT: matches your renderer
-                target_occ=0.70,  # try 0.65–0.80 per class
-                occ_mode="maxdim",
-                scale_clamp=(0.7, 1.4),  # conservative first; widen after testing
-            )
-        except Exception as e:
-            logger.warning(f"PLY hygiene (safe) failed: {e}")
-            clean_bytes = raw_bytes
+        # try:
+        #     # Derive fov/scale from your intrinsics via fxfy
+        #     fxfy = float(self.opt.fxfy)
+        #     clean_bytes = hygiene_ply_bytes(
+        #         raw_bytes,
+        #         from_up=None,  # auto-detect; or force "y" if you know it's Y-up
+        #         fxfy=fxfy,  # <- IMPORTANT: matches your renderer
+        #         target_occ=0.70,  # try 0.65–0.80 per class
+        #         occ_mode="maxdim",
+        #         scale_clamp=(0.7, 1.4),  # conservative first; widen after testing
+        #     )
+        # except Exception as e:
+        #     logger.warning(f"PLY hygiene (safe) failed: {e}")
+        #     clean_bytes = raw_bytes
 
         return clean_bytes, best_score, attempts
 
