@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 from time import time
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Callable, Awaitable
 
 import numpy as np
 import torch
@@ -249,7 +250,7 @@ class DiffSplatState:
                 plucker=self.plucker,
                 num_views=self.V_in,
                 init_std=0.0,
-                init_noise_strength=0.96,  # slightly lower to stabilize identity
+                init_noise_strength=0.96,
                 init_bg=0.0,
             ).images
         return out
@@ -273,102 +274,106 @@ class DiffSplatState:
         )
 
     def _views_to_pils(self, render_outputs, sample_n: int) -> List[Image.Image]:
-        images = render_outputs["image"].squeeze(0)  # (V,3,H,W)
+        images = render_outputs["image"].squeeze(0)
         v = images.shape[0]
         take = min(max(1, sample_n), v)
         idxs = list(range(take))
         return [vis_util.tensor_to_image(images[i, ...], return_pil=True) for i in idxs]
 
-    # ---------------- API helpers ----------------
-    def generate_ply_bytes_validated(self, prompt: str) -> tuple[bytes, float, int]:
-        """Generate and validate PLY with retry support using vld_max_retries."""
-        best_bytes, best_score = b"", -1.0
-        attempts = 0
+    # ---------------- Retry Helper ----------------
+    async def _retry_generation(
+        self,
+        prompt: str,
+        generate_fn: Callable[[str, int, float, Optional[int]], Awaitable],
+        validate_fn: Callable[[str, any], Awaitable[float]],
+        *,
+        max_retries: int,
+        seed_base: int,
+        num_steps: int,
+        guidance: float,
+        seed_stride: int,
+        concurrent: int = 1,
+    ):
+        semaphore = asyncio.Semaphore(concurrent)
+        best_output = None
+        best_score = -1.0
 
-        num_steps = self.cfg.num_inference_steps
-        guidance = self.cfg.guidance_scale
-        seed = self.cfg.seed
-
-        for attempt in range(self.cfg.vld_max_retries + 1):
-            attempts += 1
-            t0 = time()
-
-            # Adjust retry parameters slightly each time
-            cur_steps = max(min(num_steps + attempt * 5, 80), 50)
-            cur_guidance = max(min(guidance + attempt * 0.5, 9.0), 7.0)
-            cur_seed = None if seed < 0 else seed + 1337 * attempt
-
-            lat = self._run_latents(
-                prompt, steps=cur_steps, guidance=cur_guidance, seed=cur_seed
-            )
-            render = self._decode_gs(
-                lat, render_res=self.opt.input_res, opacity_threshold=0
-            )
-            pil_list = self._views_to_pils(render, self.cfg.vld_sample_views)
-
-            score = (
-                self.validator.score(prompt, pil_list)
-                if self.validator.enabled
-                else 1.0
-            )
-            logger.info(
-                f"[attempt {attempts}] CLIP={score:.3f} (steps={cur_steps}, gs={cur_guidance}, seed={cur_seed})"
-            )
-
-            pc = render["pc"][0]
-            buf = io.BytesIO()
-            pc.save_ply_buffer_sn17(buf)
-            buf.seek(0)
-            ply_bytes = buf.getvalue()
-
-            if score > best_score:
-                best_score, best_bytes = score, ply_bytes
-
-            if self.validator.passes(score):
-                logger.info(
-                    f"Validation PASSED in {time()-t0:.2f}s (attempt {attempts})"
+        async def attempt(attempt_idx: int):
+            async with semaphore:
+                cur_steps = min(num_steps + attempt_idx * 5, 80)
+                cur_guidance = min(guidance + attempt_idx * 0.5, 9.0)
+                cur_seed = (
+                    None if seed_base < 0 else seed_base + seed_stride * attempt_idx
                 )
-                return ply_bytes, score, attempts
 
-        logger.warning(
-            f"Validation FAILED after {attempts} attempts; best={best_score:.3f}"
+                t0 = time()
+                output = await generate_fn(prompt, cur_steps, cur_guidance, cur_seed)
+                score = await validate_fn(prompt, output)
+                logger.info(
+                    f"[attempt {attempt_idx+1}] CLIP={score:.3f} (steps={cur_steps}, gs={cur_guidance}, seed={cur_seed}, time={time()-t0:.1f}s)"
+                )
+                return score, output
+
+        tasks = [asyncio.create_task(attempt(i)) for i in range(max_retries + 1)]
+        for coro in asyncio.as_completed(tasks):
+            score, output = await coro
+            if score > best_score:
+                best_score, best_output = score, output
+            if self.validator.passes(score):
+                logger.info(f"Validation PASSED (score={score:.3f})")
+                for t in tasks:
+                    t.cancel()
+                return best_output, best_score, max_retries + 1
+
+        logger.warning(f"Validation FAILED; best={best_score:.3f}")
+        return best_output, best_score, max_retries + 1
+
+    # ---------------- PLY ----------------
+    async def generate_ply_bytes_validated(
+        self, prompt: str
+    ) -> tuple[bytes, float, int]:
+        async def generate_fn(prompt, steps, guidance, seed):
+            return self._decode_gs(self._run_latents(prompt, steps, guidance, seed))
+
+        async def validate_fn(prompt, render):
+            pils = self._views_to_pils(render, self.cfg.vld_sample_views)
+            return self.validator.score(prompt, pils) if self.validator.enabled else 1.0
+
+        render, best_score, attempts = await self._retry_generation(
+            prompt=prompt,
+            generate_fn=generate_fn,
+            validate_fn=validate_fn,
+            max_retries=self.cfg.vld_max_retries,
+            seed_base=self.cfg.seed,
+            num_steps=self.cfg.num_inference_steps,
+            guidance=self.cfg.guidance_scale,
+            seed_stride=1337,
+            concurrent=getattr(self.cfg, "vld_concurrent_retries", 1),
         )
-        return best_bytes, best_score, attempts
 
-    def generate_orbit_mp4_validated(
+        pc = render["pc"][0]
+        buf = io.BytesIO()
+        pc.save_ply_buffer_sn17(buf)
+        buf.seek(0)
+        return buf.getvalue(), best_score, attempts
+
+    # ---------------- Orbit MP4 ----------------
+    async def generate_orbit_mp4_validated(
         self, prompt: str, res: int = 1088
     ) -> tuple[io.BytesIO, float, int]:
-        """Generate and validate orbit video with retry support using vld_max_retries."""
-        best_buf, best_score = io.BytesIO(), -1.0
-        attempts = 0
-
-        num_steps = self.cfg.num_inference_steps
-        guidance = self.cfg.guidance_scale
-        seed = self.cfg.seed
-
         val_azis = [0.0, 120.0, 240.0][: max(1, self.cfg.vld_sample_views)]
         full_azis = np.arange(0.0, 360.0, 2.0)
-
         fxfycxcy = torch.tensor(
             [self.opt.fxfy, self.opt.fxfy, 0.5, 0.5], device=self.device
         ).float()
         elevation = 10.0
         radius_val = 1.4
 
-        for attempt in range(self.cfg.vld_max_retries + 1):
-            attempts += 1
-            t0 = time()
+        async def generate_fn(prompt, steps, guidance, seed):
+            return self._run_latents(prompt, steps, guidance, seed)
 
-            cur_steps = max(min(num_steps + attempt * 5, 80), 50)
-            cur_guidance = max(min(guidance + attempt * 0.5, 9.0), 7.0)
-            cur_seed = None if seed < 0 else seed + 7331 * attempt
-
-            lat = self._run_latents(
-                prompt, steps=cur_steps, guidance=cur_guidance, seed=cur_seed
-            )
-
-            # quick validation frames
-            val_pils: List[Image.Image] = []
+        async def validate_fn(prompt, lat):
+            pils = []
             for azi in val_azis:
                 elev_t = torch.tensor([-elevation], device=self.device)
                 azim_t = torch.tensor([float(azi)], device=self.device)
@@ -377,7 +382,6 @@ class DiffSplatState:
                     elev_t, azim_t, radius=rad_t, opengl=True
                 ).squeeze(0)
                 c2w[:3, 1:3] *= -1
-
                 render = self.gsvae.decode_and_render_gslatents(
                     self.gsrecon,
                     lat,
@@ -390,56 +394,45 @@ class DiffSplatState:
                     opacity_threshold=0.01,
                 )
                 img = render["image"].squeeze(0).squeeze(0)
-                val_pils.append(vis_util.tensor_to_image(img, return_pil=True))
+                pils.append(vis_util.tensor_to_image(img, return_pil=True))
+            return self.validator.score(prompt, pils) if self.validator.enabled else 1.0
 
-            score = (
-                self.validator.score(prompt, val_pils)
-                if self.validator.enabled
-                else 1.0
-            )
-            logger.info(
-                f"[video attempt {attempts}] CLIP={score:.3f} (steps={cur_steps}, gs={cur_guidance}, seed={cur_seed})"
-            )
-
-            if self.validator.passes(score):
-                frames: List[np.ndarray] = []
-                for azi in full_azis:
-                    elev_t = torch.tensor([-elevation], device=self.device)
-                    azim_t = torch.tensor([float(azi)], device=self.device)
-                    rad_t = torch.tensor([radius_val], device=self.device)
-                    c2w = geo_util.orbit_camera(
-                        elev_t, azim_t, radius=rad_t, opengl=True
-                    ).squeeze(0)
-                    c2w[:3, 1:3] *= -1
-
-                    render = self.gsvae.decode_and_render_gslatents(
-                        self.gsrecon,
-                        lat,
-                        self.input_C2W.unsqueeze(0),
-                        self.input_fxfycxcy.unsqueeze(0),
-                        c2w.unsqueeze(0).unsqueeze(0),
-                        fxfycxcy.unsqueeze(0).unsqueeze(0),
-                        height=res,
-                        width=res,
-                        opacity_threshold=0.01,
-                    )
-                    img = render["image"].squeeze(0).squeeze(0)
-                    frames.append(vis_util.tensor_to_image(img))
-
-                mp4_buf = io.BytesIO()
-                imageio.mimwrite(
-                    mp4_buf, np.stack(frames, axis=0), fps=30, format="mp4"
-                )
-                mp4_buf.seek(0)
-                logger.info(f"Video render after validation took {time()-t0:.2f}s")
-                return mp4_buf, score, attempts
-
-            if score > best_score:
-                best_score = score
-                best_buf = io.BytesIO()
-
-        logger.warning(
-            f"Video validation FAILED after {attempts} attempts; best={best_score:.3f}"
+        lat, best_score, attempts = await self._retry_generation(
+            prompt=prompt,
+            generate_fn=generate_fn,
+            validate_fn=validate_fn,
+            max_retries=self.cfg.vld_max_retries,
+            seed_base=self.cfg.seed,
+            num_steps=self.cfg.num_inference_steps,
+            guidance=self.cfg.guidance_scale,
+            seed_stride=7331,
+            concurrent=getattr(self.cfg, "vld_concurrent_retries", 1),
         )
-        best_buf.seek(0)
-        return best_buf, best_score, attempts
+
+        frames: List[np.ndarray] = []
+        for azi in full_azis:
+            elev_t = torch.tensor([-elevation], device=self.device)
+            azim_t = torch.tensor([float(azi)], device=self.device)
+            rad_t = torch.tensor([radius_val], device=self.device)
+            c2w = geo_util.orbit_camera(
+                elev_t, azim_t, radius=rad_t, opengl=True
+            ).squeeze(0)
+            c2w[:3, 1:3] *= -1
+            render = self.gsvae.decode_and_render_gslatents(
+                self.gsrecon,
+                lat,
+                self.input_C2W.unsqueeze(0),
+                self.input_fxfycxcy.unsqueeze(0),
+                c2w.unsqueeze(0).unsqueeze(0),
+                fxfycxcy.unsqueeze(0).unsqueeze(0),
+                height=res,
+                width=res,
+                opacity_threshold=0.01,
+            )
+            img = render["image"].squeeze(0).squeeze(0)
+            frames.append(vis_util.tensor_to_image(img))
+
+        buf = io.BytesIO()
+        imageio.mimwrite(buf, np.stack(frames, axis=0), fps=30, format="mp4")
+        buf.seek(0)
+        return buf, best_score, attempts

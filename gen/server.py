@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from time import time
 import base64
 import os
@@ -20,16 +21,18 @@ app = FastAPI()
 STATE: DiffSplatState | None = None
 CFG: Config | None = None
 
+
 # ---- NEW: helper to get validator URL (env overrides) ----
 def _validator_url() -> str:
     # allow overriding via env; default to localhost
     return os.environ.get(
-        "VALIDATOR_URL",
-        "http://localhost:8094/validate_txt_to_3d_ply/"
+        "VALIDATOR_URL", "http://localhost:8094/validate_txt_to_3d_ply/"
     )
+
 
 def get_config_dep() -> OmegaConf:
     return OmegaConf.create({"iters": 0})
+
 
 @app.on_event("startup")
 def startup_event() -> None:
@@ -39,16 +42,22 @@ def startup_event() -> None:
     STATE = DiffSplatState(CFG)
     logger.info(f"Server up. Port={CFG.port}, GPU={CFG.gpu_id}")
 
+
 @app.post("/generate/")
 async def generate(
     prompt: str = Form(...),
-    opt = Depends(get_config_dep),
+    opt=Depends(get_config_dep),
 ) -> Response:
     assert STATE is not None
     t0 = time()
-    ply_bytes, score, attempts = STATE.generate_ply_bytes_validated(prompt.strip())
-    logger.info(f"[/generate] score={score:.3f}, attempts={attempts}, total={time()-t0:.2f}s")
+    ply_bytes, gen_score, attempts = asyncio.run(
+        STATE.generate_ply_bytes_validated(prompt.strip())
+    )
+    logger.info(
+        f"[/generate] score={gen_score:.3f}, attempts={attempts}, total={time()-t0:.2f}s"
+    )
     return Response(ply_bytes, media_type="application/octet-stream")
+
 
 @app.post("/generate_and_validate/")
 async def generate_and_validate(
@@ -58,7 +67,7 @@ async def generate_and_validate(
     generate_grid_preview: bool = Form(False),
     preview_score_threshold: float = Form(0.6),
     compression: int = Form(0),
-    opt = Depends(get_config_dep),
+    opt=Depends(get_config_dep),
 ) -> JSONResponse:
     """
     Generates a PLY, then immediately validates it via the validator server.
@@ -67,7 +76,9 @@ async def generate_and_validate(
     assert STATE is not None
     t0 = time()
     # 1) Generate PLY
-    ply_bytes, gen_score, attempts = STATE.generate_ply_bytes_validated(prompt.strip())
+    ply_bytes, gen_score, attempts = asyncio.run(
+        STATE.generate_ply_bytes_validated(prompt.strip())
+    )
     elapsed = time() - t0
 
     # 2) Base64 encode for JSON transport
@@ -111,17 +122,23 @@ async def generate_and_validate(
         }
     )
 
+
 @app.post("/generate_video/")
 async def generate_video(
     prompt: str = Form(...),
     video_res: int = Form(1088),
-    opt = Depends(get_config_dep),
+    opt=Depends(get_config_dep),
 ):
     assert STATE is not None
     t0 = time()
-    mp4_buf, score, attempts = STATE.generate_orbit_mp4_validated(prompt.strip(), res=video_res)
-    logger.info(f"[/generate_video] score={score:.3f}, attempts={attempts}, total={time()-t0:.2f}s")
+    mp4_buf, gen_score, attempts = asyncio.run(
+        STATE.generate_orbit_mp4_validated(prompt.strip(), res=video_res)
+    )
+    logger.info(
+        f"[/generate_video] score={gen_score:.3f}, attempts={attempts}, total={time()-t0:.2f}s"
+    )
     return StreamingResponse(content=mp4_buf, media_type="video/mp4")
+
 
 if __name__ == "__main__":
     cfg = get_config_from_env_and_cli()
