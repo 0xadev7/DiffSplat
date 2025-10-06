@@ -25,6 +25,7 @@ from src.models import GSAutoencoderKL, GSRecon
 import src.utils.util as util
 import src.utils.geo_util as geo_util
 import src.utils.vis_util as vis_util
+from gen.ply_utils import hygiene_ply_bytes
 
 from extensions.diffusers_diffsplat import (
     SD3TransformerMV2DModel,
@@ -367,7 +368,22 @@ class DiffSplatState:
         buf = io.BytesIO()
         pc.save_ply_buffer_sn17(buf)
         buf.seek(0)
-        return buf.getvalue(), best_score, attempts
+
+        try:
+            clean_bytes = hygiene_ply_bytes(
+                buf.getvalue(),
+                from_up="z",  # most generators are Z-up; set "y" if yours already is Y-up
+                R=1.4,  # validator camera radius
+                fov_deg=49.0,  # adjust if you know exact vertical FOV used downstream
+                k=0.70,  # target ~70% frame occupancy
+                # extra_rx=0.0, extra_ry=0.0, extra_rz=0.0  # optional pose tweak
+            )
+        except Exception as e:
+            # fall back gracefully if hygiene fails
+            logger.warning(f"PLY hygiene failed: {e}")
+            clean_bytes = buf.getvalue()
+
+        return clean_bytes, best_score, attempts
 
     # ---------------- Orbit MP4 ----------------
     async def generate_orbit_mp4_validated(
