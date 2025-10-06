@@ -301,7 +301,7 @@ class DiffSplatState:
 
         async def attempt(attempt_idx: int):
             async with semaphore:
-                cur_steps = max(min(num_steps + attempt_idx * 4, 40), 28)
+                cur_steps = max(min(num_steps + attempt_idx * 4, 40), 24)
                 cur_guidance = max(min(guidance + attempt_idx * 0.5, 6.0), 4.0)
                 cur_seed = (
                     None if seed_base < 0 else seed_base + seed_stride * attempt_idx
