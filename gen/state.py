@@ -246,29 +246,31 @@ class DiffSplatState:
 
     # ---------------- API helpers ----------------
     def generate_ply_bytes_validated(self, prompt: str) -> tuple[bytes, float, int]:
-        attempts = 0
+        """Generate and validate PLY with retry support using vld_max_retries."""
         best_bytes, best_score = b"", -1.0
+        attempts = 0
 
-        trials: list[tuple[int, float, Optional[int]]] = [
-            (self.cfg.num_inference_steps, self.cfg.guidance_scale, self.cfg.seed)
-        ]
-        if self.cfg.vld_max_retries > 0:
-            trials.append(
-                (
-                    min(self.cfg.num_inference_steps + 4, 24),
-                    min(self.cfg.guidance_scale + 0.7, 7.2),
-                    None if self.cfg.seed < 0 else self.cfg.seed + 1337,
-                )
-            )
+        num_steps = self.cfg.num_inference_steps
+        guidance = self.cfg.guidance_scale
+        seed = self.cfg.seed
 
-        for steps, guidance, seed in trials:
+        for attempt in range(self.cfg.vld_max_retries + 1):
             attempts += 1
             t0 = time()
-            lat = self._run_latents(prompt, steps=steps, guidance=guidance, seed=seed)
+
+            # Adjust retry parameters slightly each time
+            cur_steps = min(num_steps + attempt * 2, 24)
+            cur_guidance = min(guidance + attempt * 0.5, 8.0)
+            cur_seed = None if seed < 0 else seed + 1337 * attempt
+
+            lat = self._run_latents(prompt, steps=cur_steps, guidance=cur_guidance, seed=cur_seed)
             render = self._decode_gs(lat, render_res=self.opt.input_res, opacity_threshold=0)
             pil_list = self._views_to_pils(render, self.cfg.vld_sample_views)
+
             score = self.validator.score(prompt, pil_list) if self.validator.enabled else 1.0
-            logger.info(f"[attempt {attempts}] CLIP={score:.3f} (steps={steps}, gs={guidance}, seed={seed})")
+            logger.info(
+                f"[attempt {attempts}] CLIP={score:.3f} (steps={cur_steps}, gs={cur_guidance}, seed={cur_seed})"
+            )
 
             pc = render["pc"][0]
             buf = io.BytesIO()
@@ -280,27 +282,21 @@ class DiffSplatState:
                 best_score, best_bytes = score, ply_bytes
 
             if self.validator.passes(score):
-                logger.info(f"Validation PASSED in {time()-t0:.2f}s")
+                logger.info(f"Validation PASSED in {time()-t0:.2f}s (attempt {attempts})")
                 return ply_bytes, score, attempts
 
         logger.warning(f"Validation FAILED after {attempts} attempts; best={best_score:.3f}")
-        return (b"", best_score, attempts)
+        return best_bytes, best_score, attempts
+
 
     def generate_orbit_mp4_validated(self, prompt: str, res: int = 1088) -> tuple[io.BytesIO, float, int]:
-        attempts = 0
+        """Generate and validate orbit video with retry support using vld_max_retries."""
         best_buf, best_score = io.BytesIO(), -1.0
+        attempts = 0
 
-        trials: list[tuple[int, float, Optional[int]]] = [
-            (max(16, min(self.cfg.num_inference_steps, 24)), self.cfg.guidance_scale, self.cfg.seed)
-        ]
-        if self.cfg.vld_max_retries > 0:
-            trials.append(
-                (
-                    min(self.cfg.num_inference_steps + 4, 24),
-                    min(self.cfg.guidance_scale + 0.7, 7.2),
-                    None if self.cfg.seed < 0 else self.cfg.seed + 7331,
-                )
-            )
+        num_steps = self.cfg.num_inference_steps
+        guidance = self.cfg.guidance_scale
+        seed = self.cfg.seed
 
         val_azis = [0.0, 120.0, 240.0][: max(1, self.cfg.vld_sample_views)]
         full_azis = np.arange(0.0, 360.0, 2.0)
@@ -309,17 +305,22 @@ class DiffSplatState:
         elevation = 10.0
         radius_val = 1.4
 
-        for steps, guidance, seed in trials:
+        for attempt in range(self.cfg.vld_max_retries + 1):
             attempts += 1
             t0 = time()
-            lat = self._run_latents(prompt, steps=steps, guidance=guidance, seed=seed)
+
+            cur_steps = min(num_steps + attempt * 2, 24)
+            cur_guidance = min(guidance + attempt * 0.5, 8.0)
+            cur_seed = None if seed < 0 else seed + 7331 * attempt
+
+            lat = self._run_latents(prompt, steps=cur_steps, guidance=cur_guidance, seed=cur_seed)
 
             # quick validation frames
             val_pils: List[Image.Image] = []
             for azi in val_azis:
-                elev_t = torch.tensor([-elevation], device=self.device, dtype=torch.float32)
-                azim_t = torch.tensor([float(azi)], device=self.device, dtype=torch.float32)
-                rad_t = torch.tensor([radius_val], device=self.device, dtype=torch.float32)
+                elev_t = torch.tensor([-elevation], device=self.device)
+                azim_t = torch.tensor([float(azi)], device=self.device)
+                rad_t = torch.tensor([radius_val], device=self.device)
                 c2w = geo_util.orbit_camera(elev_t, azim_t, radius=rad_t, opengl=True).squeeze(0)
                 c2w[:3, 1:3] *= -1
 
@@ -338,14 +339,16 @@ class DiffSplatState:
                 val_pils.append(vis_util.tensor_to_image(img, return_pil=True))
 
             score = self.validator.score(prompt, val_pils) if self.validator.enabled else 1.0
-            logger.info(f"[video attempt {attempts}] CLIP={score:.3f} (steps={steps}, gs={guidance}, seed={seed})")
+            logger.info(
+                f"[video attempt {attempts}] CLIP={score:.3f} (steps={cur_steps}, gs={cur_guidance}, seed={cur_seed})"
+            )
 
             if self.validator.passes(score):
                 frames: List[np.ndarray] = []
                 for azi in full_azis:
-                    elev_t = torch.tensor([-elevation], device=self.device, dtype=torch.float32)
-                    azim_t = torch.tensor([float(azi)], device=self.device, dtype=torch.float32)
-                    rad_t = torch.tensor([radius_val], device=self.device, dtype=torch.float32)
+                    elev_t = torch.tensor([-elevation], device=self.device)
+                    azim_t = torch.tensor([float(azi)], device=self.device)
+                    rad_t = torch.tensor([radius_val], device=self.device)
                     c2w = geo_util.orbit_camera(elev_t, azim_t, radius=rad_t, opengl=True).squeeze(0)
                     c2w[:3, 1:3] *= -1
 
