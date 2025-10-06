@@ -297,10 +297,11 @@ class DiffSplatState:
         semaphore = asyncio.Semaphore(concurrent)
         best_output = None
         best_score = -1.0
+        best_passed = False
 
         async def attempt(attempt_idx: int):
             async with semaphore:
-                cur_steps = max(min(num_steps + attempt_idx * 4, 40), 24)
+                cur_steps = max(min(num_steps + attempt_idx * 4, 40), 28)
                 cur_guidance = max(min(guidance + attempt_idx * 0.5, 6.0), 4.0)
                 cur_seed = (
                     None if seed_base < 0 else seed_base + seed_stride * attempt_idx
@@ -312,21 +313,27 @@ class DiffSplatState:
                 logger.info(
                     f"[attempt {attempt_idx+1}] CLIP={score:.3f} (steps={cur_steps}, gs={cur_guidance}, seed={cur_seed}, time={time()-t0:.1f}s)"
                 )
-                return score, output
+                return attempt_idx, score, output
 
+        # Run all attempts concurrently
         tasks = [asyncio.create_task(attempt(i)) for i in range(max_retries + 1)]
-        for coro in asyncio.as_completed(tasks):
-            score, output = await coro
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Evaluate all results after completion
+        for attempt_idx, score, output in results:
             if score > best_score:
                 best_score, best_output = score, output
             if self.validator.passes(score):
-                logger.info(f"Validation PASSED (score={score:.3f})")
-                for t in tasks:
-                    t.cancel()
-                return best_output, best_score, max_retries + 1
+                best_passed = True
 
-        logger.warning(f"Validation FAILED; best={best_score:.3f}")
-        return best_output, best_score, max_retries + 1
+        if best_passed:
+            logger.info(f"Validation PASSED (best score={best_score:.3f})")
+        else:
+            logger.warning(f"Validation FAILED; best={best_score:.3f}")
+
+        # Only return best result if validation passed, else empty
+        final_output = best_output if best_passed else None
+        return final_output, best_score, max_retries + 1
 
     # ---------------- PLY ----------------
     async def generate_ply_bytes_validated(
@@ -350,10 +357,13 @@ class DiffSplatState:
             seed_stride=1337,
             concurrent=getattr(self.cfg, "vld_concurrent_retries", 1),
         )
+        
+        if render is None:
+            return b"", best_score, attempts
 
         pc = render["pc"][0]
         buf = io.BytesIO()
-        pc.save_ply_buffer_sn17(buf, opacity_threshold=0.01)
+        pc.save_ply_buffer_sn17(buf, opacity_threshold=0.005)
         buf.seek(0)
         return buf.getvalue(), best_score, attempts
 
@@ -408,6 +418,9 @@ class DiffSplatState:
             seed_stride=7331,
             concurrent=getattr(self.cfg, "vld_concurrent_retries", 1),
         )
+        
+        if lat is None:
+            return io.BytesIO(), best_score, attempts
 
         frames: List[np.ndarray] = []
         for azi in full_azis:
