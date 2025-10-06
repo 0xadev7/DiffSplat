@@ -237,9 +237,9 @@ class DiffSplatState:
                 prompt=prompt,
                 prompt_2=prompt,
                 prompt_3=prompt,
-                negative_prompt="low quality, blurry, lowres, artifacts, worst quality, deformed, incoherent",
-                negative_prompt_2="low quality, blurry, lowres, artifacts, worst quality, deformed, incoherent",
-                negative_prompt_3="low quality, blurry, lowres, artifacts, worst quality, deformed, incoherent",
+                negative_prompt="",
+                negative_prompt_2="",
+                negative_prompt_3="",
                 num_inference_steps=steps,
                 guidance_scale=guidance,
                 triangle_cfg_scaling=self.cfg.triangle_cfg_scaling,
@@ -300,8 +300,8 @@ class DiffSplatState:
 
         async def attempt(attempt_idx: int):
             async with semaphore:
-                cur_steps = min(num_steps + attempt_idx * 5, 80)
-                cur_guidance = min(guidance + attempt_idx * 0.5, 9.0)
+                cur_steps = max(min(num_steps + attempt_idx * 4, 40), 24)
+                cur_guidance = max(min(guidance + attempt_idx * 0.5, 6.0), 4.0)
                 cur_seed = (
                     None if seed_base < 0 else seed_base + seed_stride * attempt_idx
                 )
@@ -353,7 +353,7 @@ class DiffSplatState:
 
         pc = render["pc"][0]
         buf = io.BytesIO()
-        pc.save_ply_buffer_sn17(buf)
+        pc.save_ply_buffer_sn17(buf, opacity_threshold=0.01)
         buf.seek(0)
         return buf.getvalue(), best_score, attempts
 
