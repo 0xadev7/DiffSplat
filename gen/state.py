@@ -294,8 +294,8 @@ class DiffSplatState:
             t0 = time()
 
             # Adjust retry parameters slightly each time
-            cur_steps = max(min(num_steps + attempt * 2, 60), 50)
-            cur_guidance = max(min(guidance + attempt * 0.5, 8.0), 7.0)
+            cur_steps = max(min(num_steps + attempt * 5, 80), 50)
+            cur_guidance = max(min(guidance + attempt * 0.5, 9.0), 7.0)
             cur_seed = None if seed < 0 else seed + 1337 * attempt
 
             lat = self._run_latents(
@@ -359,8 +359,8 @@ class DiffSplatState:
             attempts += 1
             t0 = time()
 
-            cur_steps = max(min(num_steps + attempt * 2, 60), 50)
-            cur_guidance = max(min(guidance + attempt * 0.5, 8.0), 7.0)
+            cur_steps = max(min(num_steps + attempt * 5, 80), 50)
+            cur_guidance = max(min(guidance + attempt * 0.5, 9.0), 7.0)
             cur_seed = None if seed < 0 else seed + 7331 * attempt
 
             lat = self._run_latents(
