@@ -47,7 +47,7 @@ async def generate(
 ) -> Response:
     assert STATE is not None
     t0 = time()
-    ply_bytes, gen_score, attempts = await STATE.generate_ply_bytes_validated(prompt.strip())
+    ply_bytes, gen_score, attempts = await STATE.generate_ply_buffer_validated(prompt.strip())
     logger.info(f"[/generate] score={gen_score:.3f}, attempts={attempts}, total={time()-t0:.2f}s")
     return Response(ply_bytes, media_type="application/octet-stream")
 

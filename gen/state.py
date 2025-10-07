@@ -369,25 +369,39 @@ class DiffSplatState:
         pc.save_ply_buffer_sn17(buf)
         buf.seek(0)
 
-        raw_bytes = buf.getvalue()
-        clean_bytes = raw_bytes
+        return buf.getvalue(), best_score, attempts
 
-        # try:
-        #     # Derive fov/scale from your intrinsics via fxfy
-        #     fxfy = float(self.opt.fxfy)
-        #     clean_bytes = hygiene_ply_bytes(
-        #         raw_bytes,
-        #         from_up=None,  # auto-detect; or force "y" if you know it's Y-up
-        #         fxfy=fxfy,  # <- IMPORTANT: matches your renderer
-        #         target_occ=0.70,  # try 0.65–0.80 per class
-        #         occ_mode="maxdim",
-        #         scale_clamp=(0.7, 1.4),  # conservative first; widen after testing
-        #     )
-        # except Exception as e:
-        #     logger.warning(f"PLY hygiene (safe) failed: {e}")
-        #     clean_bytes = raw_bytes
+    # ---------------- PLY ----------------
+    async def generate_ply_buffer_validated(
+        self, prompt: str
+    ) -> tuple[memoryview[int], float, int]:
+        async def generate_fn(prompt, steps, guidance, seed):
+            return self._decode_gs(self._run_latents(prompt, steps, guidance, seed))
 
-        return clean_bytes, best_score, attempts
+        async def validate_fn(prompt, render):
+            pils = self._views_to_pils(render, self.cfg.vld_sample_views)
+            return self.validator.score(prompt, pils) if self.validator.enabled else 1.0
+
+        render, best_score, attempts = await self._retry_generation(
+            prompt=prompt,
+            generate_fn=generate_fn,
+            validate_fn=validate_fn,
+            max_retries=self.cfg.vld_max_retries,
+            seed_base=self.cfg.seed,
+            num_steps=self.cfg.num_inference_steps,
+            guidance=self.cfg.guidance_scale,
+            seed_stride=1337,
+            concurrent=getattr(self.cfg, "vld_concurrent_retries", 1),
+        )
+
+        if render is None:
+            return memoryview(b""), best_score, attempts
+
+        pc = render["pc"][0]
+        buf = io.BytesIO()
+        pc.save_ply_buffer_sn17(buf)
+        buf.seek(0)
+        return buf.getbuffer(), best_score, attempts
 
     # ---------------- Orbit MP4 ----------------
     async def generate_orbit_mp4_validated(
