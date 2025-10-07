@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import io
 import os
 from time import time
@@ -11,6 +12,7 @@ import torch
 from PIL import Image
 import imageio
 from loguru import logger
+import httpx
 
 from transformers import (
     CLIPTextModelWithProjection,
@@ -25,7 +27,6 @@ from src.models import GSAutoencoderKL, GSRecon
 import src.utils.util as util
 import src.utils.geo_util as geo_util
 import src.utils.vis_util as vis_util
-from gen.ply_utils import hygiene_ply_bytes
 
 from extensions.diffusers_diffsplat import (
     SD3TransformerMV2DModel,
@@ -33,6 +34,7 @@ from extensions.diffusers_diffsplat import (
     FlowDPMSolverMultistepScheduler,
 )
 
+# Kept for compatibility, but local CLIP is disabled.
 from .validation import ClipValidator
 from .settings import Config
 
@@ -44,10 +46,16 @@ class DiffSplatState:
         self.device = torch.device(self.gpu)
         self.output_dir = cfg.output_dir
 
-        # Validator
+        # External validator endpoint (env overrides)
+        self.validator_url: str = os.environ.get(
+            "VALIDATOR_URL",
+            "http://localhost:8094/validate_txt_to_3d_ply/",
+        )
+
+        # Disable local CLIP validation; we only use the external validator's `score`.
         self.validator = ClipValidator(
             device=self.device,
-            enabled=cfg.vld_enabled,
+            enabled=False,
             model_name=cfg.vld_model,
             threshold=cfg.vld_threshold,
             sample_views=cfg.vld_sample_views,
@@ -281,6 +289,40 @@ class DiffSplatState:
         idxs = list(range(take))
         return [vis_util.tensor_to_image(images[i, ...], return_pil=True) for i in idxs]
 
+    # ---------------- External validator ----------------
+    async def _call_external_validator(self, prompt: str, ply_bytes: bytes) -> Tuple[float, bool, dict]:
+        """
+        Sends the base64 PLY to the external validator and returns (score, passed, raw_json).
+        Uses the `score` field of ValidationResponse directly.
+        """
+        payload = {
+            "prompt": prompt,
+            "prompt_image": None,
+            "data": base64.b64encode(ply_bytes).decode("utf-8"),
+            "compression": 0,
+            "generate_single_preview": False,
+            "generate_grid_preview": False,
+            "preview_score_threshold": float(self.cfg.vld_threshold),
+        }
+
+        try:
+            timeout = httpx.Timeout(connect=3.0, read=6.0, write=3.0, pool=3.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(self.validator_url, json=payload)
+                resp.raise_for_status()
+                js = resp.json()
+        except Exception as e:
+            logger.warning(f"[validator] error: {e}")
+            return 0.0, False, {"error": str(e)}
+
+        # Strictly use the `score` field as provided by ValidationResponse
+        try:
+            score = float(js.get("score", 0.0))
+        except Exception:
+            score = 0.0
+        passed = score >= float(self.cfg.vld_threshold)
+        return score, passed, js
+
     # ---------------- Retry Helper ----------------
     async def _retry_generation(
         self,
@@ -311,7 +353,7 @@ class DiffSplatState:
                 output = await generate_fn(prompt, cur_steps, cur_guidance, cur_seed)
                 score = await validate_fn(prompt, output)
                 logger.info(
-                    f"[attempt {attempt_idx+1}] CLIP={score:.3f} "
+                    f"[attempt {attempt_idx+1}] EXT={score:.3f} "
                     f"(steps={cur_steps}, gs={cur_guidance}, seed={cur_seed}, "
                     f"time={time()-t0:.1f}s)"
                 )
@@ -326,7 +368,7 @@ class DiffSplatState:
                 best_score, best_output = score, output
 
             # Early quit on validation success
-            if self.validator.passes(score):
+            if score >= float(self.cfg.vld_threshold):
                 logger.info(
                     f"Validation PASSED (score={score:.3f}) at attempt {attempt_idx+1}"
                 )
@@ -338,16 +380,25 @@ class DiffSplatState:
         )
         return None, best_score, max_retries + 1
 
-    # ---------------- PLY ----------------
+    # ---------------- PLY (bytes) ----------------
     async def generate_ply_bytes_validated(
         self, prompt: str
     ) -> tuple[bytes, float, int]:
+        """
+        Generate PLY bytes and validate via EXTERNAL validator (no local CLIP).
+        """
         async def generate_fn(prompt, steps, guidance, seed):
             return self._decode_gs(self._run_latents(prompt, steps, guidance, seed))
 
         async def validate_fn(prompt, render):
-            pils = self._views_to_pils(render, self.cfg.vld_sample_views)
-            return self.validator.score(prompt, pils) if self.validator.enabled else 1.0
+            # Convert render to PLY for external validation
+            pc = render["pc"][0]
+            buf = io.BytesIO()
+            pc.save_ply_buffer_sn17(buf)
+            data = buf.getvalue()
+
+            score, _, _ = await self._call_external_validator(prompt, data)
+            return score
 
         render, best_score, attempts = await self._retry_generation(
             prompt=prompt,
@@ -367,41 +418,19 @@ class DiffSplatState:
         pc = render["pc"][0]
         buf = io.BytesIO()
         pc.save_ply_buffer_sn17(buf)
-        buf.seek(0)
+        data = buf.getvalue()
+        return data, best_score, attempts
 
-        return buf.getvalue(), best_score, attempts
-
-    # ---------------- PLY ----------------
+    # ---------------- PLY (memoryview) ----------------
     async def generate_ply_buffer_validated(
         self, prompt: str
-    ) -> tuple[memoryview[int], float, int]:
-        async def generate_fn(prompt, steps, guidance, seed):
-            return self._decode_gs(self._run_latents(prompt, steps, guidance, seed))
-
-        async def validate_fn(prompt, render):
-            pils = self._views_to_pils(render, self.cfg.vld_sample_views)
-            return self.validator.score(prompt, pils) if self.validator.enabled else 1.0
-
-        render, best_score, attempts = await self._retry_generation(
-            prompt=prompt,
-            generate_fn=generate_fn,
-            validate_fn=validate_fn,
-            max_retries=self.cfg.vld_max_retries,
-            seed_base=self.cfg.seed,
-            num_steps=self.cfg.num_inference_steps,
-            guidance=self.cfg.guidance_scale,
-            seed_stride=1337,
-            concurrent=getattr(self.cfg, "vld_concurrent_retries", 1),
-        )
-
-        if render is None:
-            return memoryview(b""), best_score, attempts
-
-        pc = render["pc"][0]
-        buf = io.BytesIO()
-        pc.save_ply_buffer_sn17(buf)
-        buf.seek(0)
-        return buf.getbuffer(), best_score, attempts
+    ) -> tuple[memoryview, float, int]:
+        """
+        Same as bytes variant, but returns a memoryview for FastAPI Response.
+        Uses EXTERNAL validator.
+        """
+        data, best_score, attempts = await self.generate_ply_bytes_validated(prompt)
+        return memoryview(data), best_score, attempts
 
     # ---------------- Orbit MP4 ----------------
     async def generate_orbit_mp4_validated(
@@ -419,29 +448,14 @@ class DiffSplatState:
             return self._run_latents(prompt, steps, guidance, seed)
 
         async def validate_fn(prompt, lat):
-            pils = []
-            for azi in val_azis:
-                elev_t = torch.tensor([-elevation], device=self.device)
-                azim_t = torch.tensor([float(azi)], device=self.device)
-                rad_t = torch.tensor([radius_val], device=self.device)
-                c2w = geo_util.orbit_camera(
-                    elev_t, azim_t, radius=rad_t, opengl=True
-                ).squeeze(0)
-                c2w[:3, 1:3] *= -1
-                render = self.gsvae.decode_and_render_gslatents(
-                    self.gsrecon,
-                    lat,
-                    self.input_C2W.unsqueeze(0),
-                    self.input_fxfycxcy.unsqueeze(0),
-                    c2w.unsqueeze(0).unsqueeze(0),
-                    fxfycxcy.unsqueeze(0).unsqueeze(0),
-                    height=res,
-                    width=res,
-                    opacity_threshold=0.01,
-                )
-                img = render["image"].squeeze(0).squeeze(0)
-                pils.append(vis_util.tensor_to_image(img, return_pil=True))
-            return self.validator.score(prompt, pils) if self.validator.enabled else 1.0
+            # Decode one set of views to PLY and score via external validator fast.
+            render = self._decode_gs(lat, render_res=res, opacity_threshold=0.01)
+            pc = render["pc"][0]
+            buf = io.BytesIO()
+            pc.save_ply_buffer_sn17(buf)
+            data = buf.getvalue()
+            score, _, _ = await self._call_external_validator(prompt, data)
+            return score
 
         lat, best_score, attempts = await self._retry_generation(
             prompt=prompt,

@@ -81,7 +81,7 @@ class Config:
     # Validation (tuned to *improve score* and still pass conservatively)
     vld_enabled: bool = True
     vld_model: str = "ViT-L/14"
-    vld_threshold: float = 0.285     # keep conservative gate
+    vld_threshold: float = 0.65      # keep conservative gate
     vld_max_retries: int = 1
     vld_sample_views: int = 3        # score on more views for stability
 
@@ -124,7 +124,7 @@ def get_config_from_env_and_cli(argv: Optional[list[str]] = None) -> Config:
         load_pretrained_gsvae_ckpt=int(os.getenv("LOAD_PRETRAINED_GSVAE_CKPT", "-1")),
         vld_enabled=_get_bool("VALIDATION_ENABLE", True),
         vld_model=os.getenv("VALIDATION_MODEL", "ViT-L/14"),
-        vld_threshold=float(os.getenv("VALIDATION_THRESHOLD", "0.285")),
+        vld_threshold=float(os.getenv("VALIDATION_THRESHOLD", "0.65")),
         vld_max_retries=int(os.getenv("VALIDATION_MAX_RETRIES", "1")),
         vld_sample_views=int(os.getenv("VALIDATION_SAMPLE_VIEWS", "3")),
         env_file=os.getenv("ENV_FILE"),
