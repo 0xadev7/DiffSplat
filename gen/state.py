@@ -392,6 +392,7 @@ class MinerState:
                 steps=cur_steps,
                 guidance=cur_guidance,
                 seed=cur_seed,
+                prompt=prompt,
             )
             pc = render["pc"][0]
             buf = io.BytesIO()
@@ -430,7 +431,7 @@ class MinerState:
             cur_steps: int, cur_guidance: float, cur_seed: Optional[int]
         ) -> Tuple[torch.Tensor, dict]:
             return await self.imgcond.run_latents_only(
-                rgba, mask, cur_steps, cur_guidance, cur_seed
+                rgba, mask, cur_steps, cur_guidance, cur_seed, prompt=prompt
             )
 
         async def vld_lat(lat_and_aux) -> float:
@@ -521,6 +522,7 @@ class MinerState:
                 steps=cur_steps,
                 guidance=cur_guidance,
                 seed=cur_seed,
+                prompt="",
             )
             pc = render["pc"][0]
             buf = io.BytesIO()
@@ -563,7 +565,9 @@ class MinerState:
             steps = max(min(self.cfg.num_inference_steps + i * 4, 40), 24)
             gs = max(min(self.cfg.guidance_scale + i * 0.5, 6.0), 4.0)
             seed = None if self.cfg.seed < 0 else self.cfg.seed + 7559 * i
-            lat, aux = await self.imgcond.run_latents_only(rgba, mask, steps, gs, seed)
+            lat, aux = await self.imgcond.run_latents_only(
+                rgba, mask, steps, gs, seed, prompt=""
+            )
             render = self.imgcond.decode_latents(
                 lat, render_res=res, opacity_threshold=0.01
             )

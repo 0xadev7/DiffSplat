@@ -67,6 +67,7 @@ class DiffsplatImgCond:
         steps: int,
         guidance: float,
         seed: Optional[int],
+        prompt: Optional[str] = "",
     ) -> Dict[str, Any]:
         img_t = self._pil_to_tensor(rgba)
 
@@ -81,9 +82,9 @@ class DiffsplatImgCond:
         ):
             out = self.pipeline(
                 image=img_t,  # image-conditioned
-                prompt=None,
-                prompt_2=None,
-                prompt_3=None,
+                prompt=prompt or "",
+                prompt_2=prompt or "",
+                prompt_3=prompt or "",
                 negative_prompt="",
                 negative_prompt_2="",
                 negative_prompt_3="",
@@ -111,6 +112,7 @@ class DiffsplatImgCond:
         steps: int,
         guidance: float,
         seed: Optional[int],
+        prompt: Optional[str] = "",
     ) -> Tuple[torch.Tensor, dict]:
         img_t = self._pil_to_tensor(rgba)
         gen = (
@@ -124,9 +126,9 @@ class DiffsplatImgCond:
         ):
             lat = self.pipeline(
                 image=img_t,
-                prompt=None,
-                prompt_2=None,
-                prompt_3=None,
+                prompt=prompt or "",
+                prompt_2=prompt or "",
+                prompt_3=prompt or "",
                 negative_prompt="",
                 negative_prompt_2="",
                 negative_prompt_3="",
