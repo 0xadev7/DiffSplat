@@ -29,6 +29,7 @@ class BgRemover:
                 "image-segmentation",
                 model="briaai/RMBG-1.4",
                 device=0 if "cuda" in str(self.device) else -1,
+                trust_remote_code=True
             )
             logger.info("[BgRemover] Loaded briaai/RMBG-1.4")
         except Exception as e:
