@@ -41,7 +41,6 @@ from .pipelines.bg_remove import BgRemover
 from .pipelines.diffsplat_imgcond import DiffsplatImgCond
 
 # Kept for compatibility, but local CLIP is disabled.
-from .validation import ClipValidator
 from .settings import Config
 
 
@@ -69,16 +68,7 @@ class MinerState:
             "http://localhost:8094/validate_img_to_3d_ply/",
         )
 
-        # Disable local CLIP validation; we only use the external validator's `score`.
-        self.validator = ClipValidator(
-            device=self.device,
-            enabled=False,
-            model_name=cfg.vld_model,
-            threshold=cfg.vld_threshold,
-            sample_views=cfg.vld_sample_views,
-            use_bfloat16=True,
-        )
-
+        
         # Load DiffSplat base (shared with text-cond; we reuse for img-cond)
         self._init_diffsplat_backbone()
 
