@@ -68,7 +68,6 @@ class MinerState:
             "http://localhost:8094/validate_img_to_3d_ply/",
         )
 
-        
         # Load DiffSplat base (shared with text-cond; we reuse for img-cond)
         self._init_diffsplat_backbone()
 
@@ -117,6 +116,25 @@ class MinerState:
         if "opt" in self.configs:
             for k, v in self.configs["opt"].items():
                 setattr(opt, k, v)
+
+        # Many public SD3/StableMV checkpoints for DiffSplat were trained with image
+        # binary mask concatenation and view concat. If the checkpoint expects 23
+        # channels, we must enable these BEFORE computing in_channels.
+        if getattr(opt, "input_concat_plucker", False):
+            # If plucker is used, most ckpts also expect the extra binary-mask channel.
+            if not getattr(opt, "input_concat_binary_mask", False):
+                opt.input_concat_binary_mask = True
+                logger.warning(
+                    "[DiffSplat] Forcing opt.input_concat_binary_mask=True to match checkpoint "
+                    "(prevents in_channels mismatch: 22 vs 23)."
+                )
+        # Likewise, StableMV image-conditioned setups usually enable view_concat_condition
+        if not getattr(opt, "view_concat_condition", False):
+            opt.view_concat_condition = True
+            logger.warning(
+                "[DiffSplat] Enabling opt.view_concat_condition=True for img-cond compatibility."
+            )
+
         self.opt = opt
 
         tok = CLIPTokenizer.from_pretrained(
@@ -190,6 +208,7 @@ class MinerState:
             input_concat_plucker=self.opt.input_concat_plucker,
             input_concat_binary_mask=self.opt.input_concat_binary_mask,
         )
+
         for k, v in loading_info.items():
             assert len(v) == 0, f"Transformer load issue for {k}: {v}"
 
