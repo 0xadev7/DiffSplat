@@ -132,7 +132,7 @@ class Config:
 
     # Flux
     t2i_model_id: str = "black-forest-labs/FLUX.1-schnell"
-    t2i_resolution: int = 768
+    t2i_resolution: int = 1024
 
     # Bg Remove
     bg_remove_enabled: bool = True
@@ -230,6 +230,13 @@ class Config:
                 aliases=("VLD_SAMPLE_VIEWS",),
                 env=env,
             ),
+            # T2I
+            t2i_model_id=os.environ.get(
+                "T2I_MODEL_ID", "black-forest-labs/FLUX.1-schnell"
+            ),
+            t2i_resolution=int(os.environ.get("T2I_RES", "1024")),
+            # BG Remove
+            bg_remove_enabled=os.environ.get("BG_REMOVE", "1") == "1",
             # .env location (optional)
             env_file=_get("ENV_FILE", None, lambda v, d: v or d, env=env),
         )
