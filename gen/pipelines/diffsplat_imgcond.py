@@ -69,7 +69,6 @@ class DiffsplatImgCond:
         seed: Optional[int],
     ) -> Dict[str, Any]:
         img_t = self._pil_to_tensor(rgba)
-        mask_t = self._mask_to_tensor(mask) if mask is not None else None
 
         gen = (
             torch.Generator(device=self.device).manual_seed(seed)
@@ -78,13 +77,10 @@ class DiffsplatImgCond:
         )
 
         with torch.autocast(
-            device_type="cuda",
-            dtype=torch.bfloat16 if self.half_precision else torch.float16,
-            enabled=True,
+            "cuda", torch.bfloat16 if self.half_precision else torch.float32
         ):
             out = self.pipeline(
                 image=img_t,  # image-conditioned
-                image_mask=mask_t,  # if your fork uses a different arg name, align here
                 prompt=None,
                 prompt_2=None,
                 prompt_3=None,
@@ -117,7 +113,6 @@ class DiffsplatImgCond:
         seed: Optional[int],
     ) -> Tuple[torch.Tensor, dict]:
         img_t = self._pil_to_tensor(rgba)
-        mask_t = self._mask_to_tensor(mask) if mask is not None else None
         gen = (
             torch.Generator(device=self.device).manual_seed(seed)
             if seed is not None
@@ -125,13 +120,10 @@ class DiffsplatImgCond:
         )
 
         with torch.autocast(
-            device_type="cuda",
-            dtype=torch.bfloat16 if self.half_precision else torch.float16,
-            enabled=True,
+            "cuda", torch.bfloat16 if self.half_precision else torch.float32
         ):
             lat = self.pipeline(
                 image=img_t,
-                image_mask=mask_t,
                 prompt=None,
                 prompt_2=None,
                 prompt_3=None,
