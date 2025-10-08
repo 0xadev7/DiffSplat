@@ -130,6 +130,13 @@ class Config:
     # Env file path (only used when explicitly passed)
     env_file: Optional[str] = None
 
+    # Flux
+    t2i_model_id: str = "black-forest-labs/FLUX.1-schnell"
+    t2i_resolution: int = 768
+
+    # Bg Remove
+    bg_remove_enabled: bool = True
+
     # -------- Convenience --------
     def as_dict(self) -> dict:
         return asdict(self)
