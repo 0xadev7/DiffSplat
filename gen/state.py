@@ -14,7 +14,7 @@ import imageio
 from loguru import logger
 import httpx
 
-# ---------------- External deps you already use ----------------
+# ---------------- External deps used by DiffSplat ----------------
 from transformers import (
     CLIPTextModelWithProjection,
     CLIPTokenizer,
@@ -40,7 +40,6 @@ from .pipelines.flux_t2i import FluxT2I
 from .pipelines.bg_remove import BgRemover
 from .pipelines.diffsplat_imgcond import DiffsplatImgCond
 
-# Kept for compatibility, but local CLIP is disabled.
 from .settings import Config
 
 
@@ -49,7 +48,7 @@ class MinerState:
     Orchestrates:
       - text -> FLUX image
       - (text image) or (input image) -> BG removal -> DiffSplat image-conditioned
-      - PLY generation -> call appropriate external validator
+      - PLY generation -> external validator
     """
 
     def __init__(self, cfg: Config):
@@ -58,7 +57,7 @@ class MinerState:
         self.device = torch.device(self.gpu)
         self.output_dir = cfg.output_dir
 
-        # External validator endpoints (env overrides)
+        # External validator endpoints (env overrides allowed)
         self.validator_url_text: str = os.environ.get(
             "VALIDATOR_URL_TXT",
             "http://localhost:8094/validate_txt_to_3d_ply/",
@@ -68,10 +67,10 @@ class MinerState:
             "http://localhost:8094/validate_img_to_3d_ply/",
         )
 
-        # Load DiffSplat base (shared with text-cond; we reuse for img-cond)
+        # Load DiffSplat base (shared across text/image modes)
         self._init_diffsplat_backbone()
 
-        # Wrap image-conditioned recon helper
+        # Image-conditioned helper (wraps pipeline + gsvae/gsrecon)
         self.imgcond = DiffsplatImgCond(
             device=self.device,
             gsvae=self.gsvae,
@@ -86,7 +85,7 @@ class MinerState:
             min_guidance_scale=self.cfg.min_guidance_scale,
         )
 
-        # Optional FLUX (lazy init is okay, but load now to avoid first-call stall)
+        # Optional FLUX (eager init to avoid first-call stall)
         self.flux = FluxT2I(
             model_id=self.cfg.t2i_model_id,
             device=self.device,
@@ -96,7 +95,7 @@ class MinerState:
             resolution=self.cfg.t2i_resolution,
         )
 
-        # Background remover (robust fallback)
+        # Background remover
         self.bg = BgRemover(device=self.device, enabled=self.cfg.bg_remove_enabled)
 
         # Seed
@@ -117,26 +116,21 @@ class MinerState:
             for k, v in self.configs["opt"].items():
                 setattr(opt, k, v)
 
-        # Many public SD3/StableMV checkpoints for DiffSplat were trained with image
-        # binary mask concatenation and view concat. If the checkpoint expects 23
-        # channels, we must enable these BEFORE computing in_channels.
+        # Ensure common img-cond flags match typical checkpoints
         if getattr(opt, "input_concat_plucker", False):
-            # If plucker is used, most ckpts also expect the extra binary-mask channel.
             if not getattr(opt, "input_concat_binary_mask", False):
                 opt.input_concat_binary_mask = True
                 logger.warning(
-                    "[DiffSplat] Forcing opt.input_concat_binary_mask=True to match checkpoint "
-                    "(prevents in_channels mismatch: 22 vs 23)."
+                    "[DiffSplat] Forcing opt.input_concat_binary_mask=True to match checkpoint."
                 )
-        # Likewise, StableMV image-conditioned setups usually enable view_concat_condition
         if not getattr(opt, "view_concat_condition", False):
             opt.view_concat_condition = True
             logger.warning(
                 "[DiffSplat] Enabling opt.view_concat_condition=True for img-cond compatibility."
             )
-
         self.opt = opt
 
+        # Text encoders / VAE
         tok = CLIPTokenizer.from_pretrained(
             opt.pretrained_model_name_or_path, subfolder="tokenizer"
         )
@@ -186,9 +180,7 @@ class MinerState:
         infer_iter = util.load_ckpt(self.ckpt_dir, self.cfg.infer_from_iter, None, None)
         self.infer_iter = infer_iter
         ckpt_path = os.path.join(self.ckpt_dir, f"{infer_iter:06d}")
-        os.system(
-            f"python3 extensions/merge_safetensors.py {ckpt_path}/transformer_ema"
-        )
+        os.system(f"python3 extensions/merge_safetensors.py {ckpt_path}/transformer_ema")
 
         in_channels = (
             16
@@ -208,15 +200,12 @@ class MinerState:
             input_concat_plucker=self.opt.input_concat_plucker,
             input_concat_binary_mask=self.opt.input_concat_binary_mask,
         )
-
         for k, v in loading_info.items():
             assert len(v) == 0, f"Transformer load issue for {k}: {v}"
 
         # Load GSVAE / GSRecon checkpoints
         gsvae = util.load_ckpt(
-            os.path.join(
-                self.output_dir, self.cfg.load_pretrained_gsvae, "checkpoints"
-            ),
+            os.path.join(self.output_dir, self.cfg.load_pretrained_gsvae, "checkpoints"),
             self.cfg.load_pretrained_gsvae_ckpt,
             None,
             gsvae,
@@ -255,13 +244,9 @@ class MinerState:
             [self.opt.fxfy, self.opt.fxfy, 0.5, 0.5], device=self.device
         ).float()
         elevation = 10.0
-        elevations = (
-            torch.tensor([-elevation] * 4, device=self.device).deg2rad().float()
-        )
+        elevations = torch.tensor([-elevation] * 4, device=self.device).deg2rad().float()
         azimuths = (
-            torch.tensor([0.0, 90.0, 180.0, 270.0], device=self.device)
-            .deg2rad()
-            .float()
+            torch.tensor([0.0, 90.0, 180.0, 270.0], device=self.device).deg2rad().float()
         )
         radius = torch.tensor([1.4] * 4, device=self.device).float()
         input_C2W = geo_util.orbit_camera(elevations, azimuths, radius, is_degree=False)
@@ -382,7 +367,7 @@ class MinerState:
         # 2) bg removal
         rgba, mask = await self.bg.remove(img)
 
-        # 3) image-conditioned diffsplat -> PLY bytes (single pass wrapper used by retry)
+        # 3) image-conditioned diffsplat -> PLY bytes
         async def gen(
             cur_steps: int, cur_guidance: float, cur_seed: Optional[int]
         ) -> bytes:
@@ -396,6 +381,7 @@ class MinerState:
             )
             pc = render["pc"][0]
             buf = io.BytesIO()
+            # Subnet-17 friendly writer
             pc.save_ply_buffer_sn17(buf)
             return buf.getvalue()
 
@@ -422,11 +408,9 @@ class MinerState:
     async def generate_video_from_text(
         self, prompt: str, res: int = 1088
     ) -> tuple[io.BytesIO, float, int]:
-        # generate latents via img-cond path by first making image:
         img = await self.flux.generate_pil(prompt)
         rgba, mask = await self.bg.remove(img)
 
-        # quick-validate during retries on decoded partial PLY at `res`
         async def gen(
             cur_steps: int, cur_guidance: float, cur_seed: Optional[int]
         ) -> Tuple[torch.Tensor, dict]:
@@ -436,7 +420,6 @@ class MinerState:
 
         async def vld_lat(lat_and_aux) -> float:
             lat, _aux = lat_and_aux
-            # decode to ply quickly
             render = self.imgcond.decode_latents(
                 lat, render_res=res, opacity_threshold=0.01
             )
@@ -449,7 +432,6 @@ class MinerState:
             )
             return score
 
-        # small adaptation of retry: we want latents; rewrap to bytes
         best_lat = None
         best_score = -1.0
         attempts = 0
@@ -557,7 +539,6 @@ class MinerState:
         img = self._b64_to_pil(image_prompt_b64)
         rgba, mask = await self.bg.remove(img)
 
-        # same pattern as text version
         best_lat = None
         best_score = -1.0
         attempts = 0

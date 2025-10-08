@@ -20,7 +20,7 @@ CFG: Config | None = None
 
 
 def get_config_dep() -> OmegaConf:
-    # You can extend this to thread per-request overrides if needed
+    # Per-request overrides could be added later via this dep
     return OmegaConf.create({})
 
 

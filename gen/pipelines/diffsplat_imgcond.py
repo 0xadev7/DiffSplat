@@ -7,13 +7,13 @@ from PIL import Image
 
 class DiffsplatImgCond:
     """
-    Image-conditioned call into StableMVDiffusion3Pipeline + GSVAE/GsRecon.
-    Mirrors your text-cond setup but feeds 'image' + 'binary_mask' when available.
+    Image-conditioned call into StableMVDiffusion3Pipeline + GSVAE/GSRecon.
 
     Notes:
-      - Some forks expect the RGBA/mask baked into 'image' and set input flags:
-        input_concat_binary_mask=True. We pass the mask when present.
-      - Tweak 'init_noise_strength' / 'init_bg' if your fork expects them.
+      - Many forks expect input_concat_binary_mask=True; we keep an RGBA flow
+        and (optionally) a mask, but pass just the image tensor because the
+        reference pipeline typically reads the alpha or ignores mask.
+      - Adjust init_noise_strength / init_bg if your model expects different values.
     """
 
     def __init__(
@@ -47,10 +47,7 @@ class DiffsplatImgCond:
         arr = np.array(im).astype(np.float32) / 255.0
         if arr.ndim == 2:
             arr = np.stack([arr] * 3, axis=-1)
-        if arr.shape[-1] == 4:
-            rgb = arr[..., :3]
-        else:
-            rgb = arr[..., :3]
+        rgb = arr[..., :3]  # ignore alpha here; pipeline/opt may handle mask channel internally
         t = torch.from_numpy(rgb).permute(2, 0, 1).unsqueeze(0).to(self.device)
         return t
 
@@ -70,6 +67,8 @@ class DiffsplatImgCond:
         prompt: Optional[str] = "",
     ) -> Dict[str, Any]:
         img_t = self._pil_to_tensor(rgba)
+        # If your StableMVDiffusion3Pipeline takes an explicit 'binary_mask' arg, you can pass:
+        # mask_t = self._mask_to_tensor(mask)
 
         gen = (
             torch.Generator(device=self.device).manual_seed(seed)
@@ -100,9 +99,9 @@ class DiffsplatImgCond:
                 init_std=0.0,
                 init_noise_strength=0.96,
                 init_bg=0.0,
+                # binary_mask=mask_t,  # uncomment if your pipeline supports it explicitly
             ).images
 
-        # Decode to render dict (images + pc)
         return self.decode_latents(out)
 
     async def run_latents_only(
@@ -144,6 +143,7 @@ class DiffsplatImgCond:
                 init_std=0.0,
                 init_noise_strength=0.96,
                 init_bg=0.0,
+                # binary_mask=mask_t,
             ).images
         return lat, {}
 
